@@ -14,6 +14,10 @@ enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 pluginManagement {
 	includeBuild("androidx-media/build-logic-settings")
 	repositories {
+		maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public") }
+		maven { url = uri("https://maven.aliyun.com/repository/google") }
+		maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
+		maven { url = uri("https://maven.aliyun.com/repository/public") }
 		google {
 			mavenContent {
 				includeGroupAndSubgroups("androidx")
@@ -32,6 +36,10 @@ plugins {
 
 dependencyResolutionManagement {
 	repositories {
+		mavenCentral()
+		maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public") }
+		maven { url = uri("https://maven.aliyun.com/repository/google") }
+		maven { url = uri("https://maven.aliyun.com/repository/public") }
 		google {
 			mavenContent {
 				includeGroupAndSubgroups("androidx")
@@ -46,7 +54,6 @@ dependencyResolutionManagement {
 				includeGroupAndSubgroups("dev.zt64.subsonic")
 			}
 		}
-		mavenCentral()
 	}
 }
 

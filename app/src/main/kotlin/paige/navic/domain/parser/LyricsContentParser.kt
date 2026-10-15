@@ -70,9 +70,9 @@ object LyricsContentParser {
 
 		val plainStr = jsonObject["plainLyrics"]?.jsonPrimitive?.contentOrNull
 		if (!plainStr.isNullOrEmpty()) {
-			return plainStr.lineSequence()
-				.map { LyricsLine(text = it.trim()) }
-				.toList()
+			return normalize(plainStr.lineSequence()
+				.mapNotNull { parseLyricsLine(it.trim()) }
+				.toList())
 		}
 
 		if (jsonObject.containsKey("lyrics")) {
@@ -85,53 +85,111 @@ object LyricsContentParser {
 
 	private fun parseYoulyResponse(response: YoulyResponse): List<LyricsLine>? {
 		if (response.lyrics.isEmpty()) return null
-		return response.lyrics.map { line ->
-			LyricsLine(
-				time = line.time.milliseconds,
-				text = line.text,
+		return normalize(response.lyrics.mapNotNull { line ->
+			parseLyricsLine(line.text, line.time.milliseconds)?.copy(
 				words = line.syllabus?.map { syl ->
 					LyricsWord(syl.time.milliseconds, syl.duration.milliseconds, syl.text)
 				}
 			)
-		}.sortedBy { it.time }
+		})
 	}
 
 	private fun parseLrc(input: String): List<LyricsLine> {
 		val lines = input.lineSequence().toList()
 
 		if (!input.contains("[")) {
-			return lines.map { LyricsLine(text = it.trim()) }
+			return normalize(lines.mapNotNull { parseLyricsLine(text = it.trim()) })
 		}
 
-		return lines
+		return normalize(lines
 			.filter { it.isNotBlank() }
-			.mapNotNull { line ->
-				try {
-					if (line.startsWith("[") && line.contains("]")) {
-						val close = line.indexOf(']')
-						val timestamp = line.substring(1, close)
-						val text = line.substring(close + 1).trim()
-
-						if (!timestamp.contains(':') || timestamp.any { it.isLetter() }) {
-							return@mapNotNull if (text.isNotEmpty()) LyricsLine(text = text) else null
-						}
-
-						val parts = timestamp.split(':', '.')
-						val minutes = parts[0].toLong()
-						val seconds = parts[1].toLong()
-						val hundredths = parts.getOrNull(2)?.toLong() ?: 0L
-						val duration =
-							minutes.minutes + seconds.seconds + (hundredths * 10).milliseconds
-
-						LyricsLine(time = duration, text = text)
-					} else {
-						LyricsLine(text = line.trim())
-					}
-				} catch (_: Exception) {
-					null
-				}
-			}
-			.toList()
-			.sortedBy { it.time }
+			.flatMap { parseTimestampedLine(it) })
 	}
+
+	fun parseLine(text: String, time: kotlin.time.Duration? = null): LyricsLine? =
+		parseLyricsLine(text, time)
+
+	fun normalize(lines: List<LyricsLine>): List<LyricsLine> {
+		if (lines.none { it.time != null }) return lines
+
+		val sorted = lines.sortedBy { it.time }
+		val merged = mutableListOf<LyricsLine>()
+		for (line in sorted) {
+			val previous = merged.lastOrNull()
+			if (
+				previous != null &&
+				previous.time == line.time &&
+				previous.translatedText.isNullOrBlank() &&
+				line.translatedText.isNullOrBlank()
+			) {
+				merged[merged.lastIndex] = previous.copy(translatedText = line.text)
+			} else {
+				merged += line
+			}
+		}
+
+		return merged.mapIndexed { index, line ->
+			val start = line.time ?: return@mapIndexed line
+			val nextStart = merged.getOrNull(index + 1)?.time
+			val inferredDuration = when {
+				nextStart != null -> (nextStart - start).coerceAtLeast(1.milliseconds)
+				line.duration != null -> line.duration
+				line.words?.isNotEmpty() == true -> {
+					val end = line.words.maxOf { it.time + it.duration }
+					(end - start).coerceAtLeast(1.milliseconds)
+				}
+				else -> null
+			}
+			line.copy(duration = inferredDuration)
+		}
+	}
+
+	private fun parseTimestampedLine(line: String): List<LyricsLine> {
+		val timestamps = mutableListOf<kotlin.time.Duration>()
+		var remaining = line.trim()
+		while (true) {
+			val match = timestampPattern.find(remaining) ?: break
+			timestamps += match.timestamp()
+			remaining = remaining.removeRange(match.range).trimStart()
+		}
+
+		if (timestamps.isEmpty()) return listOfNotNull(parseLyricsLine(remaining))
+		val lyric = parseLyricsLine(remaining) ?: return emptyList()
+		return timestamps.map { lyric.copy(time = it) }
+	}
+
+	private fun MatchResult.timestamp(): kotlin.time.Duration {
+		val minutes = groupValues[1].toLong()
+		val seconds = groupValues[2].toLong()
+		val fraction = groupValues[3]
+		val fractionMillis = when (fraction.length) {
+			0 -> 0L
+			1 -> fraction.toLong() * 100
+			2 -> fraction.toLong() * 10
+			else -> fraction.take(3).toLong()
+		}
+		return minutes.minutes + seconds.seconds + fractionMillis.milliseconds
+	}
+
+	private fun parseLyricsLine(text: String, time: kotlin.time.Duration? = null): LyricsLine? {
+		if (text.isBlank()) return null
+
+		val separatorIndex = text.indexOf(" / ")
+		if (separatorIndex < 0) {
+			return LyricsLine(time = time, text = text.trim())
+		}
+
+		val original = text.substring(0, separatorIndex).trim()
+		val translation = text.substring(separatorIndex + 3).trim()
+		if (original.isEmpty()) return null
+
+		return LyricsLine(
+			time = time,
+			text = original,
+			translatedText = translation.takeIf { it.isNotEmpty() }
+		)
+	}
+
+	private val timestampPattern =
+		Regex("""^\[(\d+):(\d{1,2})(?:[.:](\d{1,3}))?\]""")
 }

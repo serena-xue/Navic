@@ -203,7 +203,7 @@ dependencies {
 	implementation(libs.androidx.media3.exoplayer)
 	implementation(libs.androidx.media3.session)
 	implementation(libs.androidx.media3.ktor)
-	implementation(libs.androidx.media3.decoder.ffmpeg)
+	implementation(libs.nextlib.media3ext)
 	implementation(libs.androidx.annotation)
 	implementation(libs.androidx.glance.appwidget)
 	implementation(libs.androidx.glance.material3)

@@ -30,7 +30,6 @@ import paige.navic.data.database.entity.LyricEntity
 import paige.navic.domain.manager.SessionManager
 import paige.navic.domain.model.DomainSong
 import paige.navic.domain.model.lyrics.LyricsConfig
-import paige.navic.domain.model.lyrics.LyricsLine
 import paige.navic.domain.model.lyrics.LyricsProvider
 import paige.navic.domain.model.lyrics.LyricsResult
 import paige.navic.domain.parser.LyricsContentParser
@@ -112,14 +111,15 @@ class LyricsRepository(
 							if (!subsonicLyrics.synced && line.value.contains("\n")) {
 								line.value.lineSequence()
 									.filter { it.isNotBlank() }
-									.map { LyricsLine(time = null, text = it.trim()) }
+									.mapNotNull { LyricsContentParser.parseLine(it.trim()) }
 									.toList()
 							} else {
 								val time =
 									if (subsonicLyrics.synced) line.start?.milliseconds else null
-								listOf(LyricsLine(time = time, text = line.value))
+								listOfNotNull(LyricsContentParser.parseLine(line.value, time))
 							}
 						}
+							?.let(LyricsContentParser::normalize)
 
 						if (!lines.isNullOrEmpty()) {
 							rawContentToCache = lines.joinToString("\n") { l ->
@@ -129,8 +129,8 @@ class LyricsRepository(
 									val s = (t.inWholeSeconds % 60).toString().padStart(2, '0')
 									val ms = ((t.inWholeMilliseconds % 1000) / 10).toString()
 										.padStart(2, '0')
-									"[$m:$s.$ms]${l.text}"
-								} else l.text
+									"[$m:$s.$ms]${l.text}${l.translatedText?.let { " / $it" } ?: ""}"
+								} else "${l.text}${l.translatedText?.let { " / $it" } ?: ""}"
 							}
 						}
 						lines

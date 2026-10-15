@@ -19,15 +19,12 @@ import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.ktor.KtorDataSource
-import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
-import androidx.media3.exoplayer.BaseRenderer
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.LoadControl
-import androidx.media3.exoplayer.RenderersFactory
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
-import androidx.media3.exoplayer.audio.MediaCodecAudioRenderer
-import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.extractor.flac.FlacExtractor
@@ -50,6 +47,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import paige.navic.domain.manager.PreferenceManager
@@ -133,26 +131,22 @@ class ExoStateHolder: KoinComponent {
         )
     )
 
-	private fun createRenderers(context: Context): RenderersFactory {
-		return RenderersFactory { handler, _, audioListener, _, _ ->
-            arrayOf<BaseRenderer>(
-                FfmpegAudioRenderer(
-                    context,
-                    handler,
-                    audioListener,
-                    gainProcessor
-                ),
-                MediaCodecAudioRenderer(
-                    context,
-                    MediaCodecSelector.DEFAULT,
-                    handler,
-                    audioListener,
-                    DefaultAudioSink.Builder(context)
-                        .setAudioProcessors(arrayOf(gainProcessor))
-                        .build()
-                )
-            )
-        }
+	private fun createRenderers(context: Context): NextRenderersFactory {
+		val renderersFactory = object : NextRenderersFactory(context) {
+			override fun buildAudioSink(
+				context: Context,
+				enableFloatOutput: Boolean,
+				enableAudioOutputPlaybackParams: Boolean
+			): AudioSink {
+				return DefaultAudioSink.Builder(context)
+					.setEnableFloatOutput(enableFloatOutput)
+					.setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
+					.setAudioProcessors(arrayOf(gainProcessor))
+					.build()
+			}
+		}
+		renderersFactory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+		return renderersFactory
 	}
 
 	private fun makeButtons(player: Player) = buildList {
