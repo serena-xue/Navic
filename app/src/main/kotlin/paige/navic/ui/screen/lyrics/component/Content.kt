@@ -6,48 +6,49 @@
 
 package paige.navic.ui.screen.lyrics.component
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.plus
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import kotlinx.collections.immutable.ImmutableList
-import org.koin.compose.koinInject
-import paige.navic.R
-import paige.navic.domain.manager.PreferenceManager
-import paige.navic.domain.model.lyrics.LyricsResult
-import paige.navic.domain.model.lyrics.displayText
-import paige.navic.domain.model.lyrics.isStartedAt
-import paige.navic.domain.model.lyrics.progressAt
-import paige.navic.shared.MediaPlayerViewModel
-import paige.navic.util.calculateWordProgress
-import kotlin.math.abs
+import androidx.compose.ui.unit.sp
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.collections.immutable.ImmutableList
+import paige.navic.R
+import paige.navic.domain.model.lyrics.LyricsLine
+import paige.navic.domain.model.lyrics.LyricsResult
+import paige.navic.domain.model.lyrics.displayText
 
+/** Longest selection, in characters, that can be shared in one sheet. */
+private const val MAX_SELECTION_CHARS = 150
+
+private val LineHorizontalPadding = 32.dp
+
+/**
+ * Body of the lyrics sheet.
+ *
+ * Synced lyrics are rendered by [AppleMusicLyrics]; picking lines to share, unsynced lyrics and
+ * playback without auto scroll all fall back to plain lists, since the karaoke renderer always
+ * follows playback.
+ */
 @Composable
 fun LyricsScreenContent(
 	data: LyricsResult?,
@@ -57,206 +58,206 @@ fun LyricsScreenContent(
 	onAddSelectedIndex: (Int) -> Unit,
 	onRemoveSelectedIndex: (Int) -> Unit,
 	onRestartAtIndex: (Int) -> Unit,
+	onStartSelectionAt: (Int) -> Unit,
+	onSeekToLine: (Duration) -> Unit,
+	positionProvider: () -> Int,
 	duration: Duration,
-	currentDuration: Duration,
+	autoScroll: Boolean,
+	useBlur: Boolean,
+	blurDelta: Float,
+	textColor: Color,
 	contentPadding: PaddingValues
 ) {
-	val density = LocalDensity.current
-	val player = koinInject<MediaPlayerViewModel>()
-	val preferenceManager = koinInject<PreferenceManager>()
+	val lyrics = data?.lines.orEmpty()
+	if (data == null || lyrics.isEmpty()) {
+		LyricsScreenPlaceholder(onRefresh = onRefresh)
+		return
+	}
 
-	val listState = rememberLazyListState()
-
-	val lyrics = data?.lines
-	val isSynced = data?.isSynced == true
-	val providerName = data?.providerName
-	val maxSelectionChars = 150
-	fun totalSelectedChars(): Int =
-		selectedIndices.sumOf { lyrics?.getOrNull(it)?.displayText()?.length ?: 0 }
-
-	if (lyrics.isNullOrEmpty()) return LyricsScreenPlaceholder(onRefresh = onRefresh)
-
-	val activeIndex = if (isSynced) {
-		lyrics.indexOfLast { line ->
-			line.isStartedAt(currentDuration)
-		}
-	} else -1
-
-	val lyricsAutoscroll = preferenceManager.lyricsAutoscroll
-		&& !isSelecting
-		&& isSynced
-
-	LaunchedEffect(activeIndex, isSelecting, lyricsAutoscroll) {
-		if (!lyricsAutoscroll) return@LaunchedEffect
-		if (activeIndex < 0) return@LaunchedEffect
-
-		withFrameNanos { }
-
-		fun centerDistance(): Int? {
-			val layoutInfo = listState.layoutInfo
-			val activeItem = layoutInfo.visibleItemsInfo
-				.firstOrNull { it.index == activeIndex }
-				?: return null
-			val itemCenter = activeItem.offset + activeItem.size / 2
-			val viewportCenter =
-				(layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
-			return itemCenter - viewportCenter
-		}
-
-		if (centerDistance() == null) {
-			listState.scrollToItem(activeIndex)
-			withFrameNanos { }
-		}
-
-		centerDistance()?.let { distance ->
-			val thresholdPx = with(density) { 24.dp.toPx() }
-			if (abs(distance) > thresholdPx) {
-				listState.scrollBy(distance.toFloat())
-			}
+	val providerName = data.providerName
+	val selectedCharCount = selectedIndices.sumOf { index ->
+		lyrics.getOrNull(index)?.displayText()?.length ?: 0
+	}
+	val toggleSelection: (Int) -> Unit = { index ->
+		lyrics.getOrNull(index)?.let { line ->
+			toggleLineSelection(
+				index = index,
+				lineLength = line.text.length,
+				selectedIndices = selectedIndices,
+				selectedCharCount = selectedCharCount,
+				onAdd = onAddSelectedIndex,
+				onRemove = onRemoveSelectedIndex,
+				onRestart = onRestartAtIndex
+			)
 		}
 	}
 
-	LazyColumn(
-		Modifier.fillMaxSize(),
-		state = listState,
-		contentPadding = contentPadding + PaddingValues(top = 16.dp)
-	) {
-		itemsIndexed(lyrics) { index, line ->
-			val isActive = if (isSynced) index == activeIndex else true
-			val isSelected = selectedIndices.contains(index)
-			val isEmphasised = (isActive && !isSelecting) || isSelected
-			val distance = abs(index - activeIndex)
+	when {
+		isSelecting -> SelectableLyricsList(
+			lines = lyrics,
+			selectedIndices = selectedIndices,
+			onToggleIndex = toggleSelection,
+			providerName = providerName,
+			contentPadding = contentPadding
+		)
 
-			val lineProgress = line.progressAt(
-				currentDuration = currentDuration,
-				fallbackEnd = lyrics.getOrNull(index + 1)?.time ?: duration,
-				preEmphasis = 200.milliseconds
-			)
-
-			val lineBackgroundColor by animateColorAsState(
-				if (isSelected)
-					MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-				else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0f)
-			)
-			val lineScale by animateFloatAsState(
-				targetValue = when {
-					!isSynced -> 1f
-					isEmphasised -> 1.05f
-					else -> 0.98f
-				},
-				animationSpec = spring(stiffness = Spring.StiffnessLow)
-			)
-			val linePaddingY by animateDpAsState(
-				targetValue = if (isEmphasised) 20.dp else 12.dp,
-				animationSpec = MaterialTheme.motionScheme.slowSpatialSpec()
-			)
-			val lineOffsetY by animateDpAsState(
-				targetValue = when {
-					isActive || isSelecting || !isSynced -> 0.dp
-					(index > activeIndex) -> 8.dp
-					else -> (-8).dp
-				},
-				animationSpec = spring(stiffness = Spring.StiffnessLow)
-			)
-			val lineBlurRadius by animateDpAsState(
-				targetValue = when {
-					isSelecting -> 0.dp
-					!isSynced -> 0.dp
-					isActive -> 0.dp
-					distance == 1 -> 1.5.dp
-					distance == 2 -> 3.dp
-					else -> 4.5.dp
-				},
-				animationSpec = spring(stiffness = Spring.StiffnessLow)
-			)
-
-			val highlight = if (isSelecting) isSelected else isActive
-			val progress = when {
-				isSelecting -> if (isSelected) 1f else 0f
-				!isSynced -> 1f
-				isActive -> line.words
-					?.takeIf { it.isNotEmpty() }
-					?.calculateWordProgress(line.text, currentDuration)
-					?: lineProgress
-
-				else -> 0f
-			}
-
-			LyricsScreenKaraokeText(
-				text = line.text,
-				translatedText = line.translatedText,
-				progress = progress,
-				isActive = highlight,
-				isSynced = isSynced,
-				onClick = {
-					if (isSelecting) {
-						val lineTextLength = line.text.length
-						if (selectedIndices.isEmpty()) {
-							if (lineTextLength <= maxSelectionChars) {
-								onAddSelectedIndex(index)
-							}
-						} else {
-							if (index in selectedIndices) {
-								val isEndpoint =
-									index == selectedIndices.first() || index == selectedIndices.last()
-
-								if (isEndpoint) {
-									onRemoveSelectedIndex(index)
-								} else {
-									// restart the selection at the tapped index
-									// if it's in the middle of the range
-									onRestartAtIndex(index)
-								}
-							} else {
-								val minIndex = selectedIndices.minOrNull() ?: index
-								val maxIndex = selectedIndices.maxOrNull() ?: index
-								val isAdjacent = index == minIndex - 1 || index == maxIndex + 1
-								val newChars = totalSelectedChars() + lineTextLength
-
-								if (newChars <= maxSelectionChars) {
-									// only extend the selection if the tapped line
-									// is adjacent to an edge
-									if (isAdjacent) {
-										onAddSelectedIndex(index)
-									} else {
-										onRestartAtIndex(index)
-									}
-								}
-							}
-						}
-					} else if (line.time != null) {
-						player.seek((line.time / duration).toFloat())
-						if (player.uiState.value.isPaused) {
-							player.resume()
-						}
+		data.isSynced && autoScroll -> Box(
+			modifier = Modifier
+				.fillMaxSize()
+				.padding(contentPadding)
+		) {
+			val syncedLyrics = remember(data, duration) { data.toSyncedLyrics(duration) }
+			AppleMusicLyrics(
+				lyrics = syncedLyrics,
+				positionProvider = positionProvider,
+				onLineClick = { startMillis -> onSeekToLine(startMillis.milliseconds) },
+				onLineLongClick = { startMillis ->
+					val index = lyrics.indexOfFirst {
+						it.time?.inWholeMilliseconds == startMillis.toLong()
 					}
+					if (index >= 0) onStartSelectionAt(index)
 				},
 				modifier = Modifier
-					.padding(horizontal = 32.dp, vertical = linePaddingY)
-					.graphicsLayer {
-						scaleX = lineScale
-						scaleY = lineScale
-						translationY = lineOffsetY.toPx()
-					}
-					.then(
-						if (lineBlurRadius > 0.dp && !isSelecting && preferenceManager.lyricsBlur) {
-							Modifier.blur(lineBlurRadius)
-						} else Modifier
-					)
-					.background(lineBackgroundColor, MaterialTheme.shapes.medium)
+					.fillMaxSize()
+					.padding(horizontal = 16.dp),
+				textColor = textColor,
+				useBlur = useBlur,
+				blurDelta = blurDelta
 			)
 		}
-		providerName?.let { providerName ->
-			item {
-				Text(
-					stringResource(
-						R.string.info_lyrics_provider,
-						providerName
-					),
-					textAlign = TextAlign.Center,
-					modifier = Modifier.fillMaxWidth()
-				)
-			}
+
+		else -> PlainLyricsList(
+			lines = lyrics,
+			providerName = providerName,
+			textColor = textColor,
+			contentPadding = contentPadding
+		)
+	}
+}
+
+/**
+ * Applies one tap inside the selection: extends the range when the tapped line touches it,
+ * shrinks it when an end of the range is tapped and restarts at the tapped line otherwise.
+ */
+private fun toggleLineSelection(
+	index: Int,
+	lineLength: Int,
+	selectedIndices: List<Int>,
+	selectedCharCount: Int,
+	onAdd: (Int) -> Unit,
+	onRemove: (Int) -> Unit,
+	onRestart: (Int) -> Unit
+) {
+	if (index in selectedIndices) {
+		val isRangeEnd = index == selectedIndices.first() || index == selectedIndices.last()
+		if (isRangeEnd) onRemove(index) else onRestart(index)
+		return
+	}
+	if (selectedIndices.isEmpty()) {
+		if (lineLength <= MAX_SELECTION_CHARS) onAdd(index)
+		return
+	}
+	if (selectedCharCount + lineLength > MAX_SELECTION_CHARS) return
+
+	val isAdjacent = index == (selectedIndices.minOrNull() ?: index) - 1 ||
+		index == (selectedIndices.maxOrNull() ?: index) + 1
+	if (isAdjacent) onAdd(index) else onRestart(index)
+}
+
+@Composable
+private fun SelectableLyricsList(
+	lines: List<LyricsLine>,
+	selectedIndices: ImmutableList<Int>,
+	onToggleIndex: (Int) -> Unit,
+	providerName: String?,
+	contentPadding: PaddingValues
+) {
+	LazyColumn(
+		modifier = Modifier.fillMaxSize(),
+		contentPadding = contentPadding + PaddingValues(vertical = 16.dp)
+	) {
+		itemsIndexed(lines) { index, line ->
+			val isSelected = index in selectedIndices
+			LyricsLineRow(
+				line = line,
+				color = if (isSelected) {
+					MaterialTheme.colorScheme.onPrimaryContainer
+				} else {
+					MaterialTheme.colorScheme.onSurface
+				},
+				modifier = Modifier
+					.padding(horizontal = 16.dp, vertical = 2.dp)
+					.clip(MaterialTheme.shapes.medium)
+					.background(
+						if (isSelected) {
+							MaterialTheme.colorScheme.primaryContainer
+						} else {
+							Color.Transparent
+						}
+					)
+					.clickable { onToggleIndex(index) }
+			)
+		}
+		providerName?.let { name ->
+			item { LyricsProviderFooter(providerName = name) }
 		}
 	}
+}
+
+@Composable
+private fun PlainLyricsList(
+	lines: List<LyricsLine>,
+	providerName: String?,
+	textColor: Color,
+	contentPadding: PaddingValues
+) {
+	LazyColumn(
+		modifier = Modifier.fillMaxSize(),
+		contentPadding = contentPadding + PaddingValues(vertical = 16.dp)
+	) {
+		itemsIndexed(lines) { _, line ->
+			LyricsLineRow(
+				line = line,
+				color = textColor,
+				modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+			)
+		}
+		providerName?.let { name ->
+			item { LyricsProviderFooter(providerName = name) }
+		}
+	}
+}
+
+@Composable
+private fun LyricsLineRow(line: LyricsLine, color: Color, modifier: Modifier = Modifier) {
+	Column(
+		modifier = modifier
+			.fillMaxWidth()
+			.padding(horizontal = LineHorizontalPadding, vertical = 12.dp)
+	) {
+		Text(
+			text = line.text,
+			color = color,
+			fontSize = 22.sp,
+			fontWeight = FontWeight.SemiBold
+		)
+		line.translatedText?.takeIf { it.isNotBlank() }?.let { translation ->
+			Text(
+				text = translation,
+				color = color.copy(alpha = 0.7f),
+				fontSize = 16.sp
+			)
+		}
+	}
+}
+
+@Composable
+private fun LyricsProviderFooter(providerName: String) {
+	Text(
+		text = stringResource(R.string.info_lyrics_provider, providerName),
+		textAlign = TextAlign.Center,
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(vertical = 16.dp)
+	)
 }
