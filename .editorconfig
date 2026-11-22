@@ -9,6 +9,12 @@ insert_final_newline = true
 max_line_length = 100
 tab_width = 4
 
+[*.kt]
+# Kotlin style: IntelliJ/Android Studio defaults, tabs, 100 columns (see [*] above).
+ktlint_code_style = android_studio
+# Composables are named like the UI they emit (Compose API guidelines), not like functions.
+ktlint_function_naming_ignore_when_annotated_with = Composable
+
 [*.yml]
 indent_size = 2
 indent_style = space
