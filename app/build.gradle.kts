@@ -230,6 +230,7 @@ dependencies {
 	implementation(libs.materialKolor)
 	implementation(libs.composePipette)
 	implementation(libs.multiplatformSettings)
+	implementation(libs.accompanist.lyrics.ui)
 
 	// Misc
 	implementation(libs.koin.core)
