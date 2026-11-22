@@ -37,7 +37,7 @@ plugins {
 
 dependencyResolutionManagement {
 	repositories {
-		mavenCentral()
+		// 国内镜像优先：上游把 mavenCentral() 排在首位，从国内访问会长时间卡在 Cloudflare 上
 		maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public") }
 		maven { url = uri("https://maven.aliyun.com/repository/google") }
 		maven { url = uri("https://maven.aliyun.com/repository/public") }
