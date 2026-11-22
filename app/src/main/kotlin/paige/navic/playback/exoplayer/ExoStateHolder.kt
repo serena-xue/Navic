@@ -286,12 +286,13 @@ class ExoStateHolder(
 		)
 
 		if (starTargetId != null) {
+			// Builder(int) accepts ICON_* constants only; drawable IDs would become iconResId=0.
 			add(
 				CommandButton.Builder(
 					if (currentSongStarred) {
-						R.drawable.ic_star_filled
+						CommandButton.ICON_STAR_FILLED
 					} else {
-						R.drawable.ic_star
+						CommandButton.ICON_STAR_UNFILLED
 					}
 				)
 					.setDisplayName(
