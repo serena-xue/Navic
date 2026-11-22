@@ -15,10 +15,14 @@ pluginManagement {
 	includeBuild("build-logic")
 	includeBuild("vendor/androidx-media/build-logic-settings")
 	repositories {
-		maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public") }
-		maven { url = uri("https://maven.aliyun.com/repository/google") }
-		maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
-		maven { url = uri("https://maven.aliyun.com/repository/public") }
+		// pluginManagement 是独立的脚本作用域，拿不到 settings 顶层的 val，因此就地读环境变量
+		// 默认开启国内镜像；GitHub Actions 等海外环境设 NAVIC_CN_MIRRORS=false 走官方源
+		if ((System.getenv("NAVIC_CN_MIRRORS") ?: "true").toBoolean()) {
+			maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public") }
+			maven { url = uri("https://maven.aliyun.com/repository/google") }
+			maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
+			maven { url = uri("https://maven.aliyun.com/repository/public") }
+		}
 		google {
 			mavenContent {
 				includeGroupAndSubgroups("androidx")
@@ -38,9 +42,11 @@ plugins {
 dependencyResolutionManagement {
 	repositories {
 		// 国内镜像优先：上游把 mavenCentral() 排在首位，从国内访问会长时间卡在 Cloudflare 上
-		maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public") }
-		maven { url = uri("https://maven.aliyun.com/repository/google") }
-		maven { url = uri("https://maven.aliyun.com/repository/public") }
+		if ((System.getenv("NAVIC_CN_MIRRORS") ?: "true").toBoolean()) {
+			maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public") }
+			maven { url = uri("https://maven.aliyun.com/repository/google") }
+			maven { url = uri("https://maven.aliyun.com/repository/public") }
+		}
 		google {
 			mavenContent {
 				includeGroupAndSubgroups("androidx")

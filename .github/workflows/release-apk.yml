@@ -42,6 +42,8 @@ jobs:
     name: Build and release
     runs-on: ubuntu-latest
     env:
+      # GitHub runner 在海外，必须用官方源；本地/国内默认走镜像
+      NAVIC_CN_MIRRORS: "false"
       # 与上游一致的签名环境变量；secrets 缺失时退回 debug 签名（仍可直接安装）
       SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
       SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -115,7 +117,8 @@ jobs:
         run: |
           echo "${{ secrets.KEYSTORE }}" | base64 -d > release.keystore
           ./gradlew ":app:package${{ inputs.flavor == 'fdroid' && 'Fdroid' || 'Default' }}Release" \
-            -Pnavic.abi=${{ steps.args.outputs.abis }} --stacktrace --no-daemon --no-watch-fs
+            -Pnavic.abi=${{ steps.args.outputs.abis }} \
+            --stacktrace --no-daemon --no-watch-fs
           rm -f release.keystore
 
       - name: Build debug (no signing secrets)
@@ -123,7 +126,8 @@ jobs:
         run: |
           echo "::notice::未配置 KEY_ALIAS/KEYSTORE 等 secrets，改为构建 debug 签名包（可直接安装，但标记为 debug）"
           ./gradlew ":app:assemble${{ inputs.flavor == 'fdroid' && 'Fdroid' || 'Default' }}Debug" \
-            -Pnavic.abi=${{ steps.args.outputs.abis }} --stacktrace --no-daemon --no-watch-fs
+            -Pnavic.abi=${{ steps.args.outputs.abis }} \
+            --stacktrace --no-daemon --no-watch-fs
 
       - name: Collect APK
         run: |

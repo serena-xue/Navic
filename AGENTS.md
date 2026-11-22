@@ -28,12 +28,17 @@ Kotlin + Jetpack Compose。当前分支的主线工作是歌词显示。
 - 两个 submodule 都在 `vendor/` 下（`vendor/androidx-media` = `Nightdavisao/android-media3`，
   `vendor/subsonic-kotlin`），`settings.gradle.kts` 用 `includeMedia3` + `includeBuild` 接入；
   缺了它们配置阶段就失败：先 `git submodule update --init --recursive`。
-- 工具链：Gradle wrapper（9.9）、JDK 21（`jvmToolchain(21)`，`:app` 与 media3 用）、
-  **JDK 17**（`vendor/subsonic-kotlin` 的 `subsonic-client` 用 17 工具链；本机需可被 Gradle 发现，
-  否则会去 GitHub 下载并卡住）、AGP 9.3.3、Kotlin 2.4.21、compileSdk 37.2、minSdk 24。
+- 工具链：Gradle 9.9.2；Gradle 守护进程跑在 **JDK 25（最新 LTS，固定在
+  `gradle/gradle-daemon-jvm.properties`）**；编译字节码用 `jvmToolchain(21)`；
+  `vendor/subsonic-kotlin` 的 `subsonic-client` 需要 **JDK 17** 工具链。
+  三者都要能被 Gradle 发现，否则它会尝试联网下载工具链。
+  AGP 9.5.2、Kotlin 2.4.21、Compose 1.13.0、Material3 1.5.0、compileSdk 37.2、minSdk 24。
 - 原生依赖：media3 的 `decoder_ffmpeg` 需要 NDK 28.2（AGP 会自动装），其 JNI 源码是嵌套 submodule
   （`git.bigyoshinoyahead.nya.je/Navic/ffmpeg`），国内直连不通，git 里给这个域名配了代理才能 init。
-- 依赖仓库：`settings.gradle.kts` 里腾讯/阿里云镜像在前，`mavenCentral()` 兜底；Gradle 发行包走腾讯镜像。
+- 依赖仓库开关：`settings.gradle.kts` 的 `cnMirrors`（腾讯/阿里云镜像）默认开启，供国内网络使用；
+  **GitHub Actions 等海外环境必须传 `-Pnavic.cnMirrors=false` 走官方源**（google / mavenCentral /
+  gradlePluginPortal），否则镜像反而更慢。Gradle 发行包用官方 `services.gradle.org`，
+  国内下载卡住时可临时换注释里的腾讯镜像地址。
 - 常用命令（注意有 product flavor，任务名必须带 flavor）：
 
   ```bash
