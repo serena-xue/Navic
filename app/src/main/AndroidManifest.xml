@@ -153,7 +153,7 @@
 		<receiver
 			android:name=".widgets.miniplayer.MiniPlayerReceiver"
 			android:exported="false"
-			android:label="Mini Player">
+			android:label="@string/title_mini_player">
 			<intent-filter>
 				<action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
 				<action android:name="${applicationId}.NOW_PLAYING_UPDATED" />
@@ -167,7 +167,7 @@
 		<receiver
 			android:name=".widgets.turntable.TurnTableReceiver"
 			android:exported="false"
-			android:label="Turn Table">
+			android:label="@string/title_turn_table">
 			<intent-filter>
 				<action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
 				<action android:name="${applicationId}.NOW_PLAYING_UPDATED" />

@@ -30,7 +30,6 @@ import androidx.glance.layout.Column
 import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Row
 import androidx.glance.layout.fillMaxSize
-import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
 import androidx.glance.state.PreferencesGlanceStateDefinition
@@ -63,8 +62,7 @@ class MiniPlayerWidget : NowPlayingWidget() {
 				modifier = GlanceModifier
 					.background(GlanceTheme.colors.widgetBackground)
 					.fillMaxSize()
-					.height(88.dp)
-					.padding(12.dp)
+					.padding(16.dp)
 					.clickable(actionStartActivity(launchIntent(context)))
 					.appWidgetInnerCornerRadius(0.dp)
 					.appWidgetBackground(),
@@ -85,7 +83,7 @@ class MiniPlayerWidget : NowPlayingWidget() {
 					Text(
 						text = title,
 						style = TextStyle(
-							color = GlanceTheme.colors.onPrimaryContainer,
+							color = GlanceTheme.colors.onSurface,
 							fontSize = 16.sp
 						),
 						maxLines = 1
@@ -94,8 +92,8 @@ class MiniPlayerWidget : NowPlayingWidget() {
 						text = artist,
 						style = TextStyle(
 							color = ColorProvider(
-								GlanceTheme.colors.onPrimaryContainer.getColor(context)
-									.copy(alpha = .8f)
+								GlanceTheme.colors.onSurface.getColor(context)
+									.copy(alpha = .7f)
 							),
 							fontSize = 14.sp
 						),
@@ -105,8 +103,8 @@ class MiniPlayerWidget : NowPlayingWidget() {
 
 				CircleIconButton(
 					imageProvider = ImageProvider(R.drawable.ic_previous),
-					contentDescription = "Previous",
-					contentColor = GlanceTheme.colors.onPrimaryContainer,
+					contentDescription = context.getString(R.string.widget_previous),
+					contentColor = GlanceTheme.colors.onSurface,
 					onClick = actionSendBroadcast(
 						createMediaIntent(
 							context,
@@ -117,8 +115,10 @@ class MiniPlayerWidget : NowPlayingWidget() {
 				)
 				CircleIconButton(
 					imageProvider = ImageProvider(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play),
-					contentDescription = if (isPlaying) "Pause" else "Play",
-					contentColor = GlanceTheme.colors.onPrimaryContainer,
+					contentDescription = context.getString(
+						if (isPlaying) R.string.widget_pause else R.string.widget_play
+					),
+					contentColor = GlanceTheme.colors.onSurface,
 					onClick = actionSendBroadcast(
 						createMediaIntent(
 							context,
@@ -129,8 +129,8 @@ class MiniPlayerWidget : NowPlayingWidget() {
 				)
 				CircleIconButton(
 					imageProvider = ImageProvider(R.drawable.ic_next),
-					contentDescription = "Next",
-					contentColor = GlanceTheme.colors.onPrimaryContainer,
+					contentDescription = context.getString(R.string.widget_next),
+					contentColor = GlanceTheme.colors.onSurface,
 					onClick = actionSendBroadcast(
 						createMediaIntent(
 							context,

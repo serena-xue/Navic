@@ -20,7 +20,6 @@ import androidx.glance.action.clickable
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.actionSendBroadcast
 import androidx.glance.appwidget.action.actionStartActivity
-import androidx.glance.appwidget.components.CircleIconButton
 import androidx.glance.appwidget.components.SquareIconButton
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.background
@@ -51,7 +50,7 @@ class TurnTableWidget : NowPlayingWidget() {
 		Box(
 			modifier = GlanceModifier
 				.size(kotlin.comparisons.minOf(size.width, size.height))
-				.padding(12.dp)
+				.padding(16.dp)
 				.clickable(actionStartActivity(launchIntent(context))),
 			contentAlignment = Alignment.Center
 		) {
@@ -68,25 +67,13 @@ class TurnTableWidget : NowPlayingWidget() {
 
 			Box(
 				modifier = GlanceModifier.fillMaxSize(),
-				contentAlignment = Alignment.TopEnd
-			) {
-				CircleIconButton(
-					imageProvider = ImageProvider(R.drawable.ic_star),
-					contentDescription = "Star",
-					backgroundColor = GlanceTheme.colors.tertiary,
-					contentColor = GlanceTheme.colors.onTertiary,
-					onClick = {},
-					modifier = GlanceModifier.size(48.dp)
-				)
-			}
-
-			Box(
-				modifier = GlanceModifier.fillMaxSize(),
 				contentAlignment = Alignment.BottomStart
 			) {
 				SquareIconButton(
 					imageProvider = ImageProvider(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play),
-					contentDescription = if (isPlaying) "Pause" else "Play",
+					contentDescription = context.getString(
+						if (isPlaying) R.string.widget_pause else R.string.widget_play
+					),
 					onClick = actionSendBroadcast(
 						createMediaIntent(
 							context,

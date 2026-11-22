@@ -26,6 +26,7 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
+import paige.navic.core.widgets.R
 
 /**
  * Base widgets class which widgets will inherit from. Used with `NowPlayingReceiver`
@@ -38,8 +39,10 @@ abstract class NowPlayingWidget : GlanceAppWidget() {
 			val prefs = currentState<Preferences>()
 
 			val isPlaying = prefs[NowPlayingKeys.isPlaying] ?: false
-			val title = prefs[NowPlayingKeys.titleKey]?.takeIf { it.isNotBlank() } ?: "Not Playing"
-			val artist = prefs[NowPlayingKeys.artistKey]?.takeIf { it.isNotBlank() } ?: "No Artist"
+			val title = prefs[NowPlayingKeys.titleKey]?.takeIf { it.isNotBlank() }
+				?: context.getString(R.string.widget_not_playing)
+			val artist = prefs[NowPlayingKeys.artistKey]?.takeIf { it.isNotBlank() }
+				?: context.getString(R.string.widget_unknown_artist)
 			val artUrl = prefs[NowPlayingKeys.artUrlKey]
 
 			val bitmap by produceState<Bitmap?>(initialValue = null, artUrl) {
