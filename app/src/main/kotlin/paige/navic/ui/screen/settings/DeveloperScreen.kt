@@ -6,6 +6,7 @@
 
 package paige.navic.ui.screen.settings
 
+import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,7 +31,8 @@ import org.koin.compose.koinInject
 import paige.navic.R
 import paige.navic.di.LocalNavStack
 import paige.navic.di.LocalSizeClass
-import paige.navic.domain.manager.PreferenceManager
+import paige.navic.preferences.PreferenceManager
+import paige.navic.domain.manager.ui.SnackBarManager
 import paige.navic.ui.component.common.SegmentedListButton
 import paige.navic.ui.component.common.SegmentedListButtonDefaults
 import paige.navic.ui.component.common.SegmentedListItem
@@ -42,6 +44,7 @@ import paige.navic.ui.navigation.Screen
 import paige.navic.ui.screen.settings.component.SettingsGroup
 import paige.navic.ui.screen.settings.component.SettingsGroupDefaults
 import paige.navic.ui.screen.settings.component.SettingsNavItem
+import paige.navic.util.MiscUtils
 
 @Composable
 fun SettingsDeveloperScreen() {
@@ -50,6 +53,7 @@ fun SettingsDeveloperScreen() {
 	val hideBack = sizeClass.widthSizeClass >= WindowWidthSizeClass.Medium
 	var exceptionConfirmationShown by rememberSaveable { mutableStateOf(false) }
 	val preferenceManager = koinInject<PreferenceManager>()
+	val snackBarManager = koinInject<SnackBarManager>()
 
 	Scaffold(
 		topBar = {
@@ -73,25 +77,15 @@ fun SettingsDeveloperScreen() {
 					.padding(horizontal = 16.dp),
 				verticalArrangement = Arrangement.spacedBy(SettingsGroupDefaults.GapBetweenGroups)
 			) {
-				SettingsGroup {
-					SettingsNavItem(
-						onClick = dropUnlessResumed {
-							backStack.lastOrNull()?.let {
-								if (it is Screen.Settings.Developer) {
-									backStack.add(Screen.Settings.ConnectionOptions)
-								}
-							}
-						},
-						content = { Text(stringResource(R.string.option_connection_options)) },
-						shapes = SegmentedListItemDefaults.segmentedShapes(index = 0, count = 3)
-					)
+				val context = koinInject<Context>()
 
+				SettingsGroup {
 					SettingsNavItem(
 						onClick = {
 							preferenceManager.shushQueueDuplicateDialog = false
 						},
 						content = { Text(stringResource(R.string.action_reset_dont_show_agains)) },
-						shapes = SegmentedListItemDefaults.segmentedShapes(index = 1, count = 3)
+						shapes = SegmentedListItemDefaults.segmentedShapes(index = 0, count = 2)
 					)
 
 					SettingsNavItem(
@@ -103,16 +97,28 @@ fun SettingsDeveloperScreen() {
 							}
 						},
 						content = { Text(stringResource(R.string.title_logs)) },
-						shapes = SegmentedListItemDefaults.segmentedShapes(index = 2, count = 3)
+						shapes = SegmentedListItemDefaults.segmentedShapes(index = 1, count = 2)
 					)
 				}
 
 				SettingsGroup {
 					SegmentedListItem(
+						onClick = { snackBarManager.notify(R.string.action_test_snack_bar) },
+						content = { Text(stringResource(R.string.action_test_snack_bar)) },
+						shapes = SegmentedListItemDefaults.segmentedShapes(index = 0, count = 3)
+					)
+					SegmentedListItem(
 						onClick = { exceptionConfirmationShown = true },
 						content = { Text(stringResource(R.string.action_test_exception_handler)) },
-						shapes = SegmentedListItemDefaults.segmentedShapes(index = 0, count = 1),
+						shapes = SegmentedListItemDefaults.segmentedShapes(index = 1, count = 3),
 						colors = SegmentedListItemDefaults.segmentedErrorColors()
+					)
+					SegmentedListItem(
+						onClick = {
+							MiscUtils.triggerRebirth(context)
+						},
+						content = { Text(stringResource(R.string.action_restart_application)) },
+						shapes = SegmentedListItemDefaults.segmentedShapes(index = 2, count = 3)
 					)
 				}
 			}

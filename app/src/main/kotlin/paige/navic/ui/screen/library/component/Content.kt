@@ -27,7 +27,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import kotlinx.collections.immutable.ImmutableList
+import androidx.paging.compose.LazyPagingItems
 import paige.navic.R
 import paige.navic.di.LocalNavStack
 import paige.navic.domain.model.DomainAlbum
@@ -35,13 +35,12 @@ import paige.navic.domain.model.DomainAlbumListType
 import paige.navic.domain.model.DomainArtist
 import paige.navic.domain.model.DomainGenre
 import paige.navic.domain.model.DomainPlaylist
-import paige.navic.ui.icons.Icons
-import paige.navic.ui.icons.outlined.History
-import paige.navic.ui.icons.outlined.LibraryAdd
-import paige.navic.ui.icons.outlined.Shuffle
-import paige.navic.ui.icons.outlined.Star
 import paige.navic.ui.component.layout.horizontalSection
-import paige.navic.ui.core.UiState
+import paige.navic.icons.Icons
+import paige.navic.icons.outlined.History
+import paige.navic.icons.outlined.LibraryAdd
+import paige.navic.icons.outlined.Shuffle
+import paige.navic.icons.outlined.Star
 import paige.navic.ui.navigation.Screen
 import paige.navic.ui.screen.album.component.AlbumListScreenGridItem
 import paige.navic.ui.screen.artist.ArtistListScreenGridItem
@@ -58,7 +57,7 @@ fun LibraryScreenContent(
 	onSetShareId: (String) -> Unit,
 
 	// albums
-	albumsState: UiState<ImmutableList<DomainAlbum>>,
+	albumsState: LazyPagingItems<DomainAlbum>,
 	selectedAlbum: DomainAlbum?,
 	selectedAlbumIsStarred: Boolean,
 	selectedAlbumRating: Int,
@@ -70,9 +69,9 @@ fun LibraryScreenContent(
 	onAddAlbumToQueue: () -> Unit,
 
 	// artists
-	artistsState: UiState<ImmutableList<DomainArtist>>,
+	artistsState: LazyPagingItems<DomainArtist>,
 	selectedArtist: DomainArtist?,
-	selectedArtistAlbums: ImmutableList<DomainAlbum>?,
+	selectedArtistAlbums: List<DomainAlbum>?,
 	selectedArtistIsStarred: Boolean,
 	onSelectArtist: (DomainArtist) -> Unit,
 	onClearArtistSelection: () -> Unit,
@@ -81,7 +80,7 @@ fun LibraryScreenContent(
 	onAddArtistToQueue: () -> Unit,
 
 	// playlists
-	playlistsState: UiState<ImmutableList<DomainPlaylist>>,
+	playlistsState: LazyPagingItems<DomainPlaylist>,
 	selectedPlaylist: DomainPlaylist?,
 	onSelectPlaylist: (DomainPlaylist) -> Unit,
 	onClearPlaylistSelection: () -> Unit,
@@ -90,7 +89,7 @@ fun LibraryScreenContent(
 	onAddPlaylistToQueue: () -> Unit,
 
 	// genres
-	genresState: UiState<ImmutableList<DomainGenre>>,
+	genresState: LazyPagingItems<DomainGenre>,
 
 	// stats
 	statsState: StatisticsState
@@ -132,12 +131,10 @@ fun LibraryScreenContent(
 			title = R.string.option_sort_recent,
 			destination = Screen.AlbumList(true, DomainAlbumListType.Recent),
 			state = albumsState,
-			key = { it.id },
 			seeAll = true
 		) { album ->
 			AlbumListScreenGridItem(
 				modifier = Modifier.animateItem().width(150.dp),
-				tab = "library",
 				album = album,
 				selected = album == selectedAlbum,
 				starred = selectedAlbumIsStarred,
@@ -156,12 +153,10 @@ fun LibraryScreenContent(
 			title = R.string.title_playlists,
 			destination = Screen.PlaylistList(true),
 			state = playlistsState,
-			key = { it.id },
 			seeAll = true
 		) { playlist ->
 			PlaylistListScreenGridItem(
 				modifier = Modifier.animateItem().width(150.dp),
-				tab = "library",
 				playlist = playlist,
 				selected = playlist == selectedPlaylist,
 				onSelect = { onSelectPlaylist(playlist) },
@@ -177,12 +172,10 @@ fun LibraryScreenContent(
 			title = R.string.title_artists,
 			destination = Screen.ArtistList(true),
 			state = artistsState,
-			key = { it.id },
 			seeAll = true
 		) { artist ->
 			ArtistListScreenGridItem(
 				modifier = Modifier.animateItem().width(150.dp),
-				tab = "library",
 				artist = artist,
 				selected = artist == selectedArtist,
 				selectedArtistAlbums = selectedArtistAlbums,
@@ -199,7 +192,6 @@ fun LibraryScreenContent(
 			title = R.string.title_genres,
 			destination = Screen.GenreList(true),
 			state = genresState,
-			key = { it.name },
 			seeAll = true
 		) { genreWithAlbums ->
 			GenreListScreenCard(genre = genreWithAlbums)
@@ -220,6 +212,7 @@ fun LibraryScreenContent(
 		item(span = { GridItemSpan(maxLineSpan) }) {
 			val backStack = LocalNavStack.current
 			StatisticsOverviewCard(
+				modifier = Modifier.padding(horizontal = 16.dp),
 				statsState = statsState,
 				onClick = { backStack.add(Screen.Statistics(true)) }
 			)

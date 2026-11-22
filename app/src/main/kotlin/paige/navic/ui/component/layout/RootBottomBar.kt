@@ -6,6 +6,7 @@
 
 package paige.navic.ui.component.layout
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -14,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.material3.MaterialTheme
@@ -24,11 +26,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.dropUnlessResumed
 import org.koin.compose.koinInject
+import paige.navic.R
+import paige.navic.di.LocalNavStack
 import paige.navic.di.LocalSizeClass
-import paige.navic.domain.manager.PreferenceManager
 import paige.navic.domain.model.settings.BottomBarCollapseMode
 import paige.navic.domain.model.settings.MiniPlayerStyle
+import paige.navic.playback.PlayerRepository
+import paige.navic.preferences.PreferenceManager
+import paige.navic.ui.navigation.Screen
 import paige.navic.ui.util.easedVerticalGradient
 
 @Composable
@@ -36,7 +45,6 @@ fun RootBottomBar(
 	scrolled: Boolean,
 	modifier: Modifier = Modifier,
 	shadows: Boolean = true,
-	hideMiniPlayer: Boolean = false,
 	windowInsets: WindowInsets = WindowInsets.systemBars
 ) {
 	val sizeClass = LocalSizeClass.current
@@ -58,6 +66,12 @@ fun RootBottomBar(
 		animationSpec = tween(durationMillis = 600)
 	)
 
+	val player = koinInject<PlayerRepository>()
+	val playerState by player.uiState.collectAsStateWithLifecycle()
+	val hasSong = playerState.currentSong != null
+
+	val backStack = LocalNavStack.current
+
 	Column(
 		modifier = modifier.then(
 			if (detached)
@@ -67,17 +81,32 @@ fun RootBottomBar(
 			else Modifier
 		)
 	) {
-		if (!hideMiniPlayer) {
-			MiniPlayer(
-				modifier = Modifier.graphicsLayer {
+		AnimatedVisibility(
+			visible = hasSong || !preferenceManager.hideIfIdle,
+			modifier = Modifier
+				.fillMaxWidth()
+				.graphicsLayer {
 					alpha = progress.coerceIn(0f..1f)
 					translationY = ((1f - progress) * (size.height * 2)).coerceAtLeast(
 						if (detached) -2048f else 0f
 					)
+				}
+		) {
+			Swiper(
+				onSwipeLeft = { if (hasSong) player.previous() },
+				onSwipeRight = { if (hasSong) player.next() },
+				onSwipeUp = dropUnlessResumed {
+					if (Screen.NowPlaying !in backStack) {
+						backStack.add(Screen.NowPlaying)
+					}
 				},
-				enabled = !scrolled,
-				windowInsets = windowInsets.only(WindowInsetsSides.Horizontal)
-			)
+				onSwipeDown = { player.clearQueue() },
+				swipeLeftAccessibilityLabel = stringResource(R.string.action_previous_song),
+				swipeRightAccessibilityLabel = stringResource(R.string.action_next_song),
+				enabled = !scrolled
+			) {
+				MiniPlayer(enabled = !scrolled)
+			}
 		}
 		BottomBar(
 			containerColor = if (detached)

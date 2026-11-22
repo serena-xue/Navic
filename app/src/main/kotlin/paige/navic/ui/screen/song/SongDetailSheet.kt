@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -36,10 +35,9 @@ import paige.navic.R
 import paige.navic.ui.component.common.SegmentedListItemDefaults
 import paige.navic.ui.screen.song.component.SongDetailScreenInfoRow
 import paige.navic.ui.screen.song.viewmodel.SongDetailViewModel
-import paige.navic.ui.theme.NavicTheme
+import paige.navic.designsystem.theme.NavicTheme
 import paige.navic.ui.util.rememberColorSchemeFromCoverArt
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SongDetailSheet(
 	songId: String,

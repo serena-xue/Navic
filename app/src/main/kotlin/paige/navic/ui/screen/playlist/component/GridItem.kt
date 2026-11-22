@@ -8,7 +8,6 @@ package paige.navic.ui.screen.playlist.component
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -19,12 +18,8 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.lifecycle.compose.dropUnlessResumed
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
-import org.koin.compose.koinInject
 import paige.navic.R
-import paige.navic.data.database.entity.DownloadStatus
 import paige.navic.di.LocalNavStack
-import paige.navic.domain.manager.DownloadManager
-import paige.navic.domain.manager.SnackBarManager
 import paige.navic.domain.model.DomainPlaylist
 import paige.navic.ui.component.layout.ArtGridItem
 import paige.navic.ui.component.sheet.CollectionSheet
@@ -34,7 +29,6 @@ import paige.navic.ui.screen.playlist.dialog.PlaylistUpdateDialog
 @Composable
 fun PlaylistListScreenGridItem(
 	modifier: Modifier = Modifier,
-	tab: String,
 	playlist: DomainPlaylist,
 	selected: Boolean,
 	onPlayNext: () -> Unit,
@@ -45,24 +39,20 @@ fun PlaylistListScreenGridItem(
 	onSetDeletionId: (String) -> Unit
 ) {
 	val backStack = LocalNavStack.current
-	val snackBarManager = koinInject<SnackBarManager>()
 	val scope = rememberCoroutineScope()
 
 	var playlistDialogShown by rememberSaveable { mutableStateOf(false) }
-	val downloadManager = koinInject<DownloadManager>()
-	val downloadStatus by downloadManager
-		.getCollectionDownloadStatus(playlist.songs.map { it.id })
-		.collectAsState(initial = DownloadStatus.NOT_DOWNLOADED)
 
 	Box(modifier) {
 		ArtGridItem(
 			onClick = dropUnlessResumed {
 				scope.launch {
-					backStack.add(Screen.CollectionDetail(playlist.id, tab))
+					backStack.add(Screen.CollectionDetail(playlist.id))
 				}
 			},
 			onLongClick = onSelect,
 			coverArtId = playlist.coverArtId,
+			coverVersion = playlist.modifiedAt.toEpochMilliseconds().toString(),
 			title = playlist.name ?: "[unknown playlist]",
 			subtitle = buildString {
 				append(
@@ -75,9 +65,7 @@ fun PlaylistListScreenGridItem(
 				playlist.comment?.let {
 					append("\n${playlist.comment}\n")
 				}
-			},
-			id = playlist.id,
-			tab = tab
+			}
 		)
 		if (selected) {
 			CollectionSheet(
@@ -87,31 +75,13 @@ fun PlaylistListScreenGridItem(
 				onDelete = { onSetDeletionId(playlist.id) },
 				onPlayNext = onPlayNext,
 				onAddToQueue = onAddToQueue,
-				onAddAllToPlaylist = { playlistDialogShown = true },
-				downloadStatus = downloadStatus,
-				onDownloadAll = {
-					scope.launch {
-						downloadManager.downloadCollection(playlist)
-						snackBarManager.notify(R.string.notice_download_started)
-					}
-				},
-				onCancelDownloadAll = {
-					scope.launch {
-						playlist.songs.forEach { downloadManager.cancelDownload(it.id) }
-					}
-				},
-				onDeleteDownloadAll = {
-					scope.launch {
-						downloadManager.deleteDownloadedCollection(playlist)
-						snackBarManager.notify(R.string.notice_deleted_download)
-					}
-				}
+				onAddAllToPlaylist = { playlistDialogShown = true }
 			)
 		}
 
 		if (playlistDialogShown) {
 			PlaylistUpdateDialog(
-				songs = playlist.songs.toPersistentList(),
+				songIds = playlist.songs.map { it.id }.toPersistentList(),
 				onDismissRequest = { playlistDialogShown = false }
 			)
 		}

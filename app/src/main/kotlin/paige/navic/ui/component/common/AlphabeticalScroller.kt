@@ -16,8 +16,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
-import paige.navic.domain.manager.PreferenceManager
+import paige.navic.preferences.PreferenceManager
 import kotlin.math.abs
 
 @Composable
@@ -48,7 +48,7 @@ fun AlphabeticalScroller(
 	val scope = rememberCoroutineScope()
 	val offsets = remember { mutableStateMapOf<Int, Float>() }
 
-	var lastSelectedIndex by remember { mutableStateOf(-1) }
+	var lastSelectedIndex by remember { mutableIntStateOf(-1) }
 
 	fun updateSelection(yCoordinate: Float) {
 		val closestEntry = offsets.entries
@@ -78,9 +78,11 @@ fun AlphabeticalScroller(
 		headers.forEachIndexed { i, (letter, _) ->
 			Text(
 				text = letter,
-				modifier = Modifier.width(20.dp).onGloballyPositioned {
-					offsets[i] = it.positionInParent().y + (it.size.height / 2f)
-				},
+				modifier = Modifier
+					.width(20.dp)
+					.onGloballyPositioned {
+						offsets[i] = it.positionInParent().y + (it.size.height / 2f)
+					},
 				textAlign = TextAlign.Center,
 				color = MaterialTheme.colorScheme.secondary
 			)

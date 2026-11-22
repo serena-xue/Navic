@@ -6,6 +6,11 @@
 
 package paige.navic.ui.screen.nowPlaying.component.rows
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,24 +21,21 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.compose.koinInject
-import paige.navic.domain.manager.ConnectivityManager
-import paige.navic.domain.manager.PreferenceManager
-import paige.navic.shared.MediaPlayerViewModel
+import paige.navic.playback.PlayerRepository
+import paige.navic.playback.PlaybackUtils
 
 @Composable
 fun NowPlayingTechnicalInfoRow() {
-	val preferenceManager = koinInject<PreferenceManager>()
-	val connectivityManager = koinInject<ConnectivityManager>()
-	val player = koinInject<MediaPlayerViewModel>()
-	val playerState by player.uiState.collectAsState()
+	val player = koinInject<PlayerRepository>()
+	val playerState by player.uiState.collectAsStateWithLifecycle()
 	val song = playerState.currentSong
 
 	val style = MaterialTheme.typography.bodySmall
@@ -55,40 +57,40 @@ fun NowPlayingTechnicalInfoRow() {
 					.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
 			)
 
-			Row(
-				modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
-				verticalAlignment = Alignment.CenterVertically
-			) {
-				val sampleRateFormatted =
-					(playerState.playbackSampleRate ?: song?.sampleRate)?.let {
+			AnimatedContent(
+				targetState = song?.id to playerState.playbackBitrate,
+				transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) }
+			) { (_, _) ->
+				Row(
+					modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+					verticalAlignment = Alignment.CenterVertically
+				) {
+					val sampleRateFormatted = (playerState.playbackSampleRate)?.let {
 						if (it >= 1000) "${it / 1000.0} kHz" else "$it Hz"
 					} ?: "-- kHz"
 
-				val isCellular = connectivityManager.isCellular.value
-				val requestedBitrate = if (preferenceManager.isAdvancedTranscodingActive) {
-					if (isCellular) preferenceManager.customMaxBitrateCellular else preferenceManager.customMaxBitrateWifi
-				} else {
-					if (isCellular) preferenceManager.streamingQualityCellular.bitrate else preferenceManager.streamingQualityWifi.bitrate
+					val bitDepthFormatted = (playerState.playbackBitDepth)
+						?.takeIf { it > 16 }
+						?.let { "$it bit" }
+
+					val bitrateFormatted =
+						(playerState.playbackBitrate?.let { it / 1000 })?.let { "$it kbps" }
+							?: "-- kbps"
+
+					val format =
+						playerState.playbackMimeType
+							?.let { PlaybackUtils.getPrettyFormatName(it) }
+							?.uppercase()
+							?: song?.fileExtension?.uppercase()
+							?: "--"
+
+					Text(
+						text = bitDepthFormatted?.let { "$format • $it / $sampleRateFormatted • $bitrateFormatted" }
+							?: "$format • $sampleRateFormatted • $bitrateFormatted",
+						style = style,
+						color = color
+					)
 				}
-
-				val bitrateFormatted = playerState.playbackBitrate?.let { "${it / 1000} kbps" }
-					?: if (requestedBitrate > 0) {
-						"$requestedBitrate kbps"
-					} else {
-						song?.bitRate?.let { "$it kbps" }
-					} ?: "-- kbps"
-
-				val format =
-					playerState.playbackMimeType?.split("/")?.lastOrNull()?.replace("mpeg", "mp3")
-						?.uppercase()
-						?: song?.fileExtension?.uppercase()
-						?: "--"
-
-				Text(
-					text = "$format • $sampleRateFormatted • $bitrateFormatted",
-					style = style,
-					color = color
-				)
 			}
 		}
 	}

@@ -36,18 +36,19 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import paige.navic.R
-import paige.navic.data.database.entity.DownloadEntity
-import paige.navic.data.database.entity.DownloadStatus
+import paige.navic.database.entity.DownloadEntity
+import paige.navic.database.entity.DownloadStatus
 import paige.navic.di.LocalNavStack
-import paige.navic.domain.manager.PreferenceManager
 import paige.navic.domain.model.DomainExplicitStatus
 import paige.navic.domain.model.DomainSong
-import paige.navic.ui.icons.Icons
-import paige.navic.ui.icons.filled.Star
-import paige.navic.ui.icons.outlined.Check
-import paige.navic.ui.icons.outlined.DownloadOff
-import paige.navic.ui.icons.outlined.Queue
-import paige.navic.ui.icons.outlined.QueuePlayNext
+import paige.navic.icons.Icons
+import paige.navic.icons.filled.Star
+import paige.navic.icons.outlined.Check
+import paige.navic.icons.outlined.DownloadOff
+import paige.navic.icons.outlined.Queue
+import paige.navic.icons.outlined.QueuePlayNext
+import paige.navic.playback.PlayerRepository
+import paige.navic.preferences.PreferenceManager
 import paige.navic.ui.component.common.CoverArt
 import paige.navic.ui.component.common.MarqueeText
 import paige.navic.ui.component.common.SmallRatingRow
@@ -83,6 +84,7 @@ fun SongListScreenItem(
 	val scope = rememberCoroutineScope()
 	var playlistDialogShown by rememberSaveable { mutableStateOf(false) }
 	val preferenceManager = koinInject<PreferenceManager>()
+	val player = koinInject<PlayerRepository>()
 
 	SwipeToDismissBox(
 		modifier = modifier,
@@ -145,13 +147,11 @@ fun SongListScreenItem(
 				supportingContent = {
 					Column {
 						MarqueeText(
-							buildSongInfoString(
-								song = song,
-								onClickArtist = { backStack.add(Screen.ArtistDetail(it)) }
-							)
+							buildSongInfoString(song)
 						)
-						if (song.userRating != null && song.userRating != 0) {
-							SmallRatingRow(rating = song.userRating)
+						val userRating = song.userRating
+						if (userRating != null && userRating != 0) {
+							SmallRatingRow(rating = userRating)
 						}
 					}
 				},
@@ -213,6 +213,7 @@ fun SongListScreenItem(
 					onShare = { onSetShareId(song.id) },
 					onPlayNext = onPlayNext,
 					onAddToQueue = onAddToQueue,
+					onInstantMix = { player.playInstantMix(song) },
 					onTrackInfo = dropUnlessResumed {
 						backStack.add(Screen.SongDetailScreen(song.id, song.coverArtId))
 					},
@@ -220,8 +221,7 @@ fun SongListScreenItem(
 						dropUnlessResumed {
 							backStack.add(
 								Screen.CollectionDetail(
-									collectionId = albumId,
-									tab = "library"
+									collectionId = albumId
 								)
 							)
 						}
@@ -241,7 +241,7 @@ fun SongListScreenItem(
 
 	if (playlistDialogShown) {
 		PlaylistUpdateDialog(
-			songs = persistentListOf(song),
+			songIds = persistentListOf(song.id),
 			onDismissRequest = { playlistDialogShown = false }
 		)
 	}

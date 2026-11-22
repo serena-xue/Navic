@@ -36,7 +36,7 @@
 
 ## 3. 参数映射
 
-`component/AppleMusicLyrics.kt`：
+`component/AppleMusicLyrics.kt`（`app/src/main/kotlin/paige/navic/ui/screen/lyrics/`）：
 
 | 参数 | 取值 | 对应目标特征 |
 | --- | --- | --- |
@@ -56,7 +56,7 @@
 
 ## 4. 数据映射
 
-`component/SyncedLyricsMapping.kt`：
+`component/SyncedLyricsMapping.kt`（模型现在位于 `core/model` 模块）：
 
 - 有逐词时间戳的行 → `KaraokeLine.MainKaraokeLine`（逐字点亮）。
 - 只有行时间戳的行 → `SyncedLine`（整行从左到右扫过）。
@@ -89,8 +89,9 @@
 
 ## 8. 验证
 
-本机没有 JDK / Android SDK，且 `androidx-media` 子模块无法拉取（GitHub 不可达），因此没有跑
-Gradle。已做的验证：
+同步上游后（2026-11 上游大重构：多模块化 + `vendor/` submodule），构建前提变成
+`git submodule update --init --recursive`（`vendor/androidx-media`、`vendor/subsonic-kotlin`）。
+本轮合并时本机仍没有完整 Android SDK，因此没有跑 Gradle。已做的验证：
 
 - 映射逻辑：用 `lyrics-core` 真实模型 + 真实 `kotlinc 2.4.20` 编译并执行 18 项断言（空白重建、
   CJK、时间退化、行尾推导、零时长等），全部通过。

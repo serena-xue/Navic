@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -32,9 +33,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import com.kyant.capsule.ContinuousRoundedRectangle
+import paige.navic.designsystem.theme.defaultFont
 import paige.navic.di.LocalSizeClass
-import paige.navic.ui.theme.defaultFont
 
 @Composable
 fun SheetToolbar(
@@ -99,7 +99,7 @@ fun SheetActionButton(
 	val endRadius by animateDpAsState(if (isEndRounded || isPressed) 12.dp else 4.dp)
 	Surface(
 		onClick = onClick,
-		shape = ContinuousRoundedRectangle(
+		shape = RoundedCornerShape(
 			topStart = startRadius,
 			bottomStart = startRadius,
 			topEnd = endRadius,

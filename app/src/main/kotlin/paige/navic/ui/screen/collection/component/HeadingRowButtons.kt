@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,31 +31,33 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kyant.capsule.ContinuousCapsule
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import paige.navic.R
-import paige.navic.data.database.entity.DownloadStatus
-import paige.navic.domain.manager.DownloadManager
-import paige.navic.domain.manager.SnackBarManager
+import paige.navic.database.entity.DownloadStatus
+import paige.navic.domain.manager.session.DownloadManager
+import paige.navic.domain.manager.ui.SnackBarManager
 import paige.navic.domain.model.DomainSongCollection
-import paige.navic.ui.icons.Icons
-import paige.navic.ui.icons.filled.Play
-import paige.navic.ui.icons.outlined.Close
-import paige.navic.ui.icons.outlined.Delete
-import paige.navic.ui.icons.outlined.Download
-import paige.navic.ui.icons.outlined.DownloadOff
-import paige.navic.ui.icons.outlined.Shuffle
-import paige.navic.shared.MediaPlayerViewModel
-import paige.navic.ui.theme.defaultFont
+import paige.navic.playback.PlayerRepository
+import paige.navic.ui.component.dialog.DeleteDownloadTarget
+import paige.navic.ui.component.dialog.rememberDownloadDeletionHandler
+import paige.navic.icons.Icons
+import paige.navic.icons.filled.Play
+import paige.navic.icons.outlined.Close
+import paige.navic.icons.outlined.Delete
+import paige.navic.icons.outlined.Download
+import paige.navic.icons.outlined.DownloadOff
+import paige.navic.icons.outlined.Shuffle
+import paige.navic.designsystem.theme.defaultFont
 
 @Composable
 fun CollectionDetailScreenHeadingRowButtons(
 	collection: DomainSongCollection
 ) {
-	val player = koinInject<MediaPlayerViewModel>()
+	val player = koinInject<PlayerRepository>()
 	val snackBarManager = koinInject<SnackBarManager>()
 	val downloadManager = koinInject<DownloadManager>()
+	val downloadDeletionHandler = rememberDownloadDeletionHandler()
 	val scope = rememberCoroutineScope()
 
 	val downloadStatus by downloadManager
@@ -69,12 +72,13 @@ fun CollectionDetailScreenHeadingRowButtons(
 			alignment = Alignment.CenterHorizontally
 		)
 	) {
-		val buttonShape = ContinuousCapsule
+		val buttonShape = CircleShape
 		val buttonHeight = 44.dp
 		OutlinedButton(
 			modifier = Modifier.size(width = 52.dp, height = buttonHeight),
 			onClick = {
-				player.shufflePlay(collection)
+				player.setShuffle(true)
+				player.playNow(collection, collection.songs.indices.random())
 			},
 			shape = buttonShape,
 			contentPadding = PaddingValues(0.dp),
@@ -87,8 +91,11 @@ fun CollectionDetailScreenHeadingRowButtons(
 			)
 		}
 		Button(
-			modifier = Modifier.weight(1f).height(buttonHeight),
+			modifier = Modifier
+				.weight(1f)
+				.height(buttonHeight),
 			onClick = {
+				player.setShuffle(false)
 				player.playNow(collection)
 			},
 			shape = buttonShape,
@@ -97,7 +104,9 @@ fun CollectionDetailScreenHeadingRowButtons(
 			Icon(
 				Icons.Filled.Play,
 				null,
-				modifier = Modifier.size(25.dp).padding(end = 3.dp)
+				modifier = Modifier
+					.size(25.dp)
+					.padding(end = 3.dp)
 			)
 			Text(
 				stringResource(R.string.action_play),
@@ -116,17 +125,19 @@ fun CollectionDetailScreenHeadingRowButtons(
 				scope.launch {
 					when (downloadStatus) {
 						DownloadStatus.NOT_DOWNLOADED, DownloadStatus.FAILED -> {
-							downloadManager.downloadCollection(collection)
+							downloadManager.downloadCollection(collection.songs.map { it.id })
 							snackBarManager.notify(R.string.notice_download_started)
 						}
 
 						DownloadStatus.DOWNLOADING -> {
-							downloadManager.cancelCollectionDownload(collection)
+							downloadManager.cancelCollectionDownload(collection.songs.map { it.id })
 						}
 
 						DownloadStatus.DOWNLOADED -> {
-							downloadManager.deleteDownloadedCollection(collection)
-							snackBarManager.notify(R.string.notice_deleted_download)
+							downloadDeletionHandler.requestDelete(
+								target = DeleteDownloadTarget.Collection.of(collection),
+								notifySnackBar = true
+							)
 						}
 					}
 				}

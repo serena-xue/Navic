@@ -35,11 +35,11 @@ import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 import paige.navic.di.LocalNavStack
 import paige.navic.di.LocalSheetState
-import paige.navic.domain.manager.PreferenceManager
 import paige.navic.domain.model.DomainSong
 import paige.navic.domain.model.settings.NowPlayingBackgroundStyle
 import paige.navic.domain.model.settings.ToolbarPosition
-import paige.navic.shared.MediaPlayerViewModel
+import paige.navic.playback.PlayerRepository
+import paige.navic.preferences.PreferenceManager
 import paige.navic.ui.component.common.BlendBackground
 import paige.navic.ui.component.common.ErrorBox
 import paige.navic.ui.component.layout.SheetScaffold
@@ -61,13 +61,13 @@ import paige.navic.ui.util.KeepScreenOn
 fun LyricsScreen(song: DomainSong?) {
 	val backStack = LocalNavStack.current
 
-	val player = koinInject<MediaPlayerViewModel>()
+	val player = koinInject<PlayerRepository>()
 	val playerState by player.uiState.collectAsStateWithLifecycle()
 	val preferenceManager = koinInject<PreferenceManager>()
 
 	val viewModel = koinViewModel<LyricsScreenViewModel>(
 		key = song?.id,
-		parameters = { parametersOf(song) },
+		parameters = { parametersOf(song?.id) },
 		viewModelStoreOwner = koinInject<PersistentViewModelStoreOwner>()
 	)
 	val lyricsState by viewModel.lyricsState.collectAsStateWithLifecycle()

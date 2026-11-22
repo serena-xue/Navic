@@ -9,6 +9,7 @@ package paige.navic.ui.component.common
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.shape.CornerBasedShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ListItemColors
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.ListItemElevation
@@ -23,13 +24,43 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.kyant.capsule.ContinuousRoundedRectangle
 
 @Composable
 fun SegmentedListItem(
-	onClick: () -> Unit,
-	shapes: ListItemShapes,
 	modifier: Modifier = Modifier,
+	shapes: ListItemShapes = SegmentedListItemDefaults.segmentedShapes(index = 0, count = 1),
+	enabled: Boolean = true,
+	leadingContent: @Composable (() -> Unit)? = null,
+	trailingContent: @Composable (() -> Unit)? = null,
+	overlineContent: @Composable (() -> Unit)? = null,
+	supportingContent: @Composable (() -> Unit)? = null,
+	verticalAlignment: Alignment.Vertical = SegmentedListItemDefaults.verticalAlignment(),
+	colors: ListItemColors = SegmentedListItemDefaults.segmentedColors(),
+	elevation: ListItemElevation = ListItemDefaults.elevation(),
+	contentPadding: PaddingValues = SegmentedListItemDefaults.ContentPadding,
+	content: @Composable () -> Unit,
+) {
+	androidx.compose.material3.SegmentedListItem(
+		modifier = modifier,
+		shapes = shapes,
+		enabled = enabled,
+		leadingContent = leadingContent,
+		trailingContent = trailingContent,
+		overlineContent = overlineContent,
+		supportingContent = supportingContent,
+		verticalAlignment = verticalAlignment,
+		colors = colors,
+		elevation = elevation,
+		contentPadding = contentPadding,
+		content = content
+	)
+}
+
+@Composable
+fun SegmentedListItem(
+	modifier: Modifier = Modifier,
+	onClick: () -> Unit,
+	shapes: ListItemShapes = SegmentedListItemDefaults.segmentedShapes(index = 0, count = 1),
 	enabled: Boolean = true,
 	leadingContent: @Composable (() -> Unit)? = null,
 	trailingContent: @Composable (() -> Unit)? = null,
@@ -66,10 +97,10 @@ fun SegmentedListItem(
 
 @Composable
 fun SegmentedListItem(
+	modifier: Modifier = Modifier,
 	selected: Boolean,
 	onClick: () -> Unit,
-	shapes: ListItemShapes,
-	modifier: Modifier = Modifier,
+	shapes: ListItemShapes = SegmentedListItemDefaults.segmentedShapes(index = 0, count = 1),
 	enabled: Boolean = true,
 	leadingContent: @Composable (() -> Unit)? = null,
 	trailingContent: @Composable (() -> Unit)? = null,
@@ -123,7 +154,7 @@ fun SegmentedListItem(
 object SegmentedListItemDefaults {
 	val SegmentedGap = 3.dp
 	val ContentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp)
-	val OverrideShape = ContinuousRoundedRectangle(18.dp)
+	val OverrideShape = RoundedCornerShape(18.dp)
 
 	@Composable
 	fun verticalAlignment() = Alignment.CenterVertically
@@ -200,6 +231,9 @@ object SegmentedListItemDefaults {
 		contentColor = MaterialTheme.colorScheme.error,
 		supportingContentColor = MaterialTheme.colorScheme.error
 	)
+
+	@Composable
+	fun segmentedShapes() = segmentedShapes(index = 0, count = 1)
 
 	@Composable
 	fun segmentedShapes(

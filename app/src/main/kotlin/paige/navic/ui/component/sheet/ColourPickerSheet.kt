@@ -6,6 +6,7 @@
 
 package paige.navic.ui.component.sheet
 
+import android.content.ClipData
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -43,19 +45,18 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import com.kyant.capsule.ContinuousCapsule
 import com.materialkolor.ktx.toHex
 import dev.zt64.compose.pipette.HsvColor
 import dev.zt64.compose.pipette.SquareColorPicker
 import kotlinx.coroutines.launch
 import paige.navic.R
-import paige.navic.ui.icons.Icons
-import paige.navic.ui.icons.outlined.Copy
+import paige.navic.icons.Icons
+import paige.navic.icons.outlined.Copy
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -68,7 +69,7 @@ fun ColorPickerSheet(
 	val hex = remember(color) {
 		color.toColor().toHex()
 	}
-	val clipboard = LocalClipboardManager.current
+	val clipboard = LocalClipboard.current
 	val sheetState = rememberBottomSheetState(SheetValue.Hidden)
 	val closeScope = rememberCoroutineScope()
 	val animateToDismiss: () -> Unit = {
@@ -106,7 +107,13 @@ fun ColorPickerSheet(
 							contentAlignment = Alignment.Center
 						) {
 							IconButton(
-								onClick = { clipboard.setText(AnnotatedString(hex)) }
+								onClick = {
+									closeScope.launch {
+										clipboard.setClipEntry(
+											ClipEntry(ClipData.newPlainText("Navic", hex))
+										)
+									}
+								}
 							) {
 								Icon(
 									imageVector = Icons.Outlined.Copy,
@@ -117,10 +124,16 @@ fun ColorPickerSheet(
 					}
 				)
 				Row(
-					modifier = Modifier.fillMaxWidth().height(150.dp),
+					modifier = Modifier
+						.fillMaxWidth()
+						.height(150.dp),
 					horizontalArrangement = Arrangement.spacedBy(8.dp)
 				) {
-					Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+					Box(
+						modifier = Modifier
+							.weight(1f)
+							.fillMaxHeight()
+					) {
 						SquareColorPicker(
 							color = { color },
 							onColorChange = onColorChange,
@@ -216,8 +229,8 @@ private fun HueSlider(
 					}
 					.fillMaxWidth()
 					.height(thumbHeight * 2)
-					.background(Color.White, ContinuousCapsule)
-					.border(2.dp, Color.LightGray, ContinuousCapsule)
+					.background(Color.White, CircleShape)
+					.border(2.dp, Color.LightGray, CircleShape)
 			)
 		}
 	}

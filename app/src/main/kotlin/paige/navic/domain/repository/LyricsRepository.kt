@@ -25,9 +25,11 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import paige.navic.data.database.dao.LyricDao
-import paige.navic.data.database.entity.LyricEntity
-import paige.navic.domain.manager.SessionManager
+import paige.navic.database.dao.LyricDao
+import paige.navic.database.dao.SongDao
+import paige.navic.database.entity.LyricEntity
+import paige.navic.database.mapper.toDomainModel
+import paige.navic.domain.manager.session.SessionManager
 import paige.navic.domain.model.DomainSong
 import paige.navic.domain.model.lyrics.LyricsConfig
 import paige.navic.domain.model.lyrics.LyricsProvider
@@ -38,6 +40,7 @@ import kotlin.time.Duration.Companion.milliseconds
 
 class LyricsRepository(
 	private val lyricDao: LyricDao,
+	private val songDao: SongDao,
 	private val settings: Settings,
 	private val sessionManager: SessionManager
 ) {
@@ -71,9 +74,9 @@ class LyricsRepository(
 		}
 	}
 
-	suspend fun fetchLyrics(song: DomainSong): LyricsResult? {
+	suspend fun fetchLyrics(songId: String): LyricsResult? {
 		try {
-			val cached = lyricDao.getLyrics(song.id)
+			val cached = lyricDao.getLyrics(songId)
 			if (cached != null) {
 				val parsed = LyricsContentParser.parse(cached.rawContent)
 				if (!parsed.isNullOrEmpty()) return LyricsResult(
@@ -86,12 +89,14 @@ class LyricsRepository(
 			Logger.w("LyricsRepository", "failed getting cached lyrics", ex)
 		}
 
+		val song = songDao.getSongById(songId)?.toDomainModel() ?: return null
+
 		val currentConfig = getConfig()
-		for (provider in currentConfig.providers.filter { it.enabled }) {
+		for ((id) in currentConfig.providers.filter { it.enabled }) {
 			try {
 				var rawContentToCache: String? = null
 
-				val parsedLyrics = when (provider.id) {
+				val parsedLyrics = when (id) {
 					LyricsProvider.Id.LYRICS_PLUS -> {
 						val raw = fetchRawLyricsPlus(song, currentConfig)
 						rawContentToCache = raw
@@ -104,19 +109,19 @@ class LyricsRepository(
 						raw?.let { LyricsContentParser.parse(it) }
 					}
 
-					LyricsProvider.Id.SUBSONIC -> {
-						val subsonicLyrics = sessionManager.api.getLyrics(song.id).firstOrNull()
+					LyricsProvider.Id.SERVER_PROVIDED -> {
+						val subsonicLyrics = sessionManager.api.getLyrics(song.id)
 
 						val lines = subsonicLyrics?.lines?.flatMap { line ->
-							if (!subsonicLyrics.synced && line.value.contains("\n")) {
-								line.value.lineSequence()
+							if (!subsonicLyrics.synced && line.text.contains("\n")) {
+								line.text.lineSequence()
 									.filter { it.isNotBlank() }
 									.mapNotNull { LyricsContentParser.parseLine(it.trim()) }
 									.toList()
 							} else {
 								val time =
-									if (subsonicLyrics.synced) line.start?.milliseconds else null
-								listOfNotNull(LyricsContentParser.parseLine(line.value, time))
+									if (subsonicLyrics.synced) line.startMillis?.milliseconds else null
+								listOfNotNull(LyricsContentParser.parseLine(line.text, time))
 							}
 						}
 							?.let(LyricsContentParser::normalize)
@@ -142,7 +147,7 @@ class LyricsRepository(
 						rawContentToCache?.let { content ->
 							val entity = LyricEntity(
 								songId = song.id,
-								providerName = provider.id.name,
+								providerName = id.name,
 								rawContent = content
 							)
 							lyricDao.insertLyrics(entity)
@@ -152,12 +157,12 @@ class LyricsRepository(
 					}
 					return LyricsResult(
 						lines = parsedLyrics,
-						providerName = provider.id.name,
+						providerName = id.name,
 						rawContent = rawContentToCache
 					)
 				}
 			} catch (e: Exception) {
-				Logger.e("LyricRepository", "Provider ${provider.id.name} failed!", e)
+				Logger.e("LyricRepository", "Provider ${id.name} failed!", e)
 				continue
 			}
 		}

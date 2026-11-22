@@ -9,8 +9,9 @@ package paige.navic.ui.screen.settings.component
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ListItem
@@ -29,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import kotlinx.collections.immutable.ImmutableList
 import paige.navic.R
 import paige.navic.ui.component.common.SegmentedListItem
+import paige.navic.ui.component.common.SegmentedListItemDefaults
+import paige.navic.ui.component.dialog.AlertDialog
 
 @Composable
 fun <Choice> SettingsChoiceItem(
@@ -37,7 +40,9 @@ fun <Choice> SettingsChoiceItem(
 	onChoiceSelected: (Choice) -> Unit,
 	label: @Composable (Choice) -> String,
 	description: String? = null,
-	shapes: ListItemShapes,
+	choiceEnabled: (Choice) -> Boolean = { true },
+	closeOnChoiceSelected: Boolean = false,
+	shapes: ListItemShapes = SegmentedListItemDefaults.segmentedShapes(),
 	content: @Composable () -> Unit
 ) {
 	var choiceDialogOpen by rememberSaveable { mutableStateOf(false) }
@@ -63,6 +68,8 @@ fun <Choice> SettingsChoiceItem(
 			selectedChoice = selectedChoice,
 			onChoiceSelected = onChoiceSelected,
 			label = label,
+			choiceEnabled = choiceEnabled,
+			closeOnChoiceSelected = closeOnChoiceSelected,
 			title = content
 		)
 	}
@@ -75,6 +82,8 @@ private fun <Choice> ChoiceDialog(
 	selectedChoice: Choice,
 	onChoiceSelected: (Choice) -> Unit,
 	label: @Composable (Choice) -> String,
+	choiceEnabled: (Choice) -> Boolean,
+	closeOnChoiceSelected: Boolean,
 	title: @Composable () -> Unit
 ) {
 	val listItemColors = ListItemDefaults.colors(
@@ -95,13 +104,18 @@ private fun <Choice> ChoiceDialog(
 			Column(
 				modifier = Modifier
 					.fillMaxWidth()
+					.verticalScroll(rememberScrollState())
 					.selectableGroup()
 			) {
 				choices.forEach { choice ->
 					val selected = selectedChoice == choice
 					ListItem(
 						selected = selected,
-						onClick = { onChoiceSelected(choice) },
+						enabled = choiceEnabled(choice),
+						onClick = {
+							if (closeOnChoiceSelected) onDismissRequest()
+							onChoiceSelected(choice)
+						},
 						content = { Text(label(choice)) },
 						colors = listItemColors,
 						contentPadding = listItemContentPadding,

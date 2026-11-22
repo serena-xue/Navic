@@ -4,16 +4,10 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-import com.android.build.api.variant.impl.VariantOutputImpl
-import com.google.devtools.ksp.gradle.KspAATask
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
-
 plugins {
-	alias(libs.plugins.android.application)
-	alias(libs.plugins.compose.compiler)
+	alias(libs.plugins.navic.application)
+	alias(libs.plugins.navic.application.compose)
 	alias(libs.plugins.kotlin.serialization)
-	alias(libs.plugins.ksp)
-	alias(libs.plugins.androidx.room3)
 }
 
 configurations.all {
@@ -24,71 +18,32 @@ configurations.all {
 	resolutionStrategy.cacheChangingModulesFor(1, "hours")
 }
 
-val generateBuildInfo = tasks.register("generateBuildInfo", Sync::class) {
-	description = "generate BuildInfo.kt"
-
-	val fdroid = System.getenv("FDROID") == "true" || providers.gradleProperty("fdroid")
-		.map { it.toBoolean() }
-		.getOrElse(false)
-
-	from(
-		resources.text.fromString(
-			"""
-			|package paige.navic.generated
-			|
-			|object BuildInfo {
-			|	const val FDROID = $fdroid
-			|}
-			|
-			""".trimMargin()
-		)
-	) {
-		rename { "BuildInfo.kt" }
-		into("paige/navic/generated")
-	}
-
-	into(layout.buildDirectory.dir("generated/buildInfo/commonMain/kotlin"))
-}
-
-tasks.withType<KotlinCompilationTask<*>>().configureEach {
-	dependsOn(generateBuildInfo)
-}
-
-// no idea why ksp tasks depend on this
-tasks.withType<KspAATask>().configureEach {
-	dependsOn(generateBuildInfo)
-}
-
-android.sourceSets.named("main") {
-	kotlin.directories.add(generateBuildInfo.map { it.destinationDir }.get().absolutePath)
-}
-
-kotlin {
-	jvmToolchain(21)
-}
-
-val isTaskRelease = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
-
-val fdroid = System.getenv("FDROID") == "true" || providers.gradleProperty("fdroid")
-	.map { it.toBoolean() }
-	.getOrElse(false)
+val isTaskRelease =
+	gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
 
 android {
 	namespace = "paige.navic"
-	compileSdk = libs.versions.android.compileSdk.get().toInt()
-	compileSdkMinor = libs.versions.android.compileSdkMinor.get().toInt()
 
 	buildFeatures {
 		resValues = true
+		buildConfig = true
+	}
+
+	androidResources {
+		generateLocaleConfig = true
+	}
+
+	lint {
+		// TODO: remove lint disable
+		// lint false-positives on the widget receivers in :core:widgets (they do extend BroadcastReceiver)
+		disable += "Instantiatable"
 	}
 
 	defaultConfig {
 		applicationId = "paige.navic"
-		minSdk = libs.versions.android.minSdk.get().toInt()
 		targetSdk = libs.versions.android.targetSdk.get().toInt()
-		versionCode = 59
-		versionName = "v1.0.0-alpha59"
-		multiDexEnabled = true
+		versionCode = 61
+		versionName = "v1.0.0-beta02"
 
 		ndk {
 			abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
@@ -109,20 +64,55 @@ android {
 
 	buildTypes {
 		release {
-			isMinifyEnabled = true
-			isProfileable = false
-			isJniDebuggable = false
-			isShrinkResources = true
+			optimization.enable = true
 			signingConfig = signingConfigs.findByName("release")?.takeIf { it.storeFile != null }
-			proguardFiles(
-				getDefaultProguardFile("proguard-android-optimize.txt"),
-				"proguard-rules.pro"
-			)
+			proguardFiles("proguard-rules.pro")
 		}
 
 		debug {
 			applicationIdSuffix = ".debug"
 			resValue("string", "app_name", "Navic (Dev)")
+		}
+	}
+
+	defaultConfig {
+		fun String?.wrapString(): String = this?.let {
+			val escaped = it
+				.removeSuffix("\n")
+				.replace("\\", "\\\\")
+				.replace("\n", "\\n")
+				.replace("\"", "\\\"")
+			"\"$escaped\""
+		} ?: "null"
+
+		fun git(vararg args: String): String? = runCatching {
+			providers.exec {
+				commandLine("git", *args)
+			}.standardOutput.asText.get().takeIf { it.isNotBlank() }
+		}.getOrNull()
+
+		val commitHash = git("rev-parse", "HEAD")
+		val commitMessage = git("log", "-1", "--pretty=%B")
+		val commitAuthor = git("log", "-1", "--pretty=%an")
+		val commitBranchName = git("branch", "--show-current")
+
+		buildConfigField("String", "GIT_COMMIT_HASH", commitHash?.wrapString() ?: "\"unknown\"")
+		buildConfigField("String", "GIT_COMMIT_MESSAGE", commitMessage?.wrapString() ?: "\"unknown\"")
+		buildConfigField("String", "GIT_COMMIT_AUTHOR", commitAuthor?.wrapString() ?: "\"unknown\"")
+		buildConfigField("String", "GIT_BRANCH_NAME", commitBranchName?.wrapString() ?: "\"unknown\"")
+	}
+
+	flavorDimensions += "version"
+	productFlavors {
+		create("default") {
+			dimension = "version"
+			isDefault = true
+			buildConfigField("boolean", "FDROID", "false")
+		}
+		create("fdroid") {
+			dimension = "version"
+			description = "removes Discord RPC and update checker features"
+			buildConfigField("boolean", "FDROID", "true")
 		}
 	}
 
@@ -143,13 +133,6 @@ android {
 		}
 	}
 
-	compileOptions {
-		isCoreLibraryDesugaringEnabled = true
-
-		sourceCompatibility = JavaVersion.VERSION_21
-		targetCompatibility = JavaVersion.VERSION_21
-	}
-
 	dependenciesInfo {
 		includeInApk = false
 		includeInBundle = false
@@ -159,12 +142,10 @@ android {
 androidComponents {
 	onVariants { variant ->
 		variant.outputs.forEach { output ->
-			if (output is VariantOutputImpl) {
-				output.outputFileName = if (fdroid) {
-					"Navic.fdroid.apk"
-				} else {
-					"Navic.apk"
-				}
+			output.outputFileName = if (variant.flavorName == "fdroid") {
+				"Navic.fdroid.apk"
+			} else {
+				"Navic.apk"
 			}
 		}
 	}
@@ -178,11 +159,16 @@ androidComponents {
 	}
 }
 
-room3 {
-	schemaDirectory("$projectDir/schemas")
-}
-
 dependencies {
+	implementation(project(":core:common"))
+	implementation(project(":core:database"))
+	implementation(project(":core:designsystem"))
+	implementation(project(":core:icons"))
+	implementation(project(":core:model"))
+	implementation(project(":core:preferences"))
+	implementation(project(":core:server"))
+	implementation(project(":core:widgets"))
+
 	// Compose
 	implementation(libs.compose.runtime)
 	implementation(libs.compose.foundation)
@@ -193,8 +179,10 @@ dependencies {
 
 	// Androidx
 	implementation(libs.androidx.activity.compose)
+	implementation(libs.androidx.appcompat)
 	implementation(libs.androidx.lifecycle.viewmodel)
 	implementation(libs.androidx.lifecycle.runtime)
+	implementation(libs.androidx.lifecycle.process)
 	implementation(libs.androidx.datastore.preferences)
 	implementation(libs.androidx.animation.graphics)
 	implementation(libs.androidx.sqlite.bundled)
@@ -202,12 +190,12 @@ dependencies {
 	implementation(libs.androidx.navigation3.ui)
 	implementation(libs.androidx.media3.exoplayer)
 	implementation(libs.androidx.media3.session)
-	implementation(libs.androidx.media3.ktor)
-	implementation(libs.nextlib.media3ext)
+	implementation(libs.androidx.media3.datasource.okhttp)
+	implementation(libs.androidx.media3.decoder.ffmpeg)
 	implementation(libs.androidx.annotation)
-	implementation(libs.androidx.glance.appwidget)
-	implementation(libs.androidx.glance.material3)
+	implementation(libs.androidx.recyclerview)
 	implementation(libs.androidx.browser)
+	implementation(libs.androidx.work.runtime.ktx)
 
 	// Kotlinx
 	implementation(libs.kotlinx.datetime)
@@ -224,7 +212,6 @@ dependencies {
 	implementation(libs.coil.gif)
 
 	// Compose 3rd party
-	implementation(libs.capsule)
 	implementation(libs.kmpalette.core)
 	implementation(libs.kmpalette.network)
 	implementation(libs.materialKolor)
@@ -232,12 +219,22 @@ dependencies {
 	implementation(libs.multiplatformSettings)
 	implementation(libs.accompanist.lyrics.ui)
 
+	// Paging
+	implementation(libs.androidx.paging.common)
+	implementation(libs.androidx.paging.compose)
+	implementation(libs.androidx.room3.paging)
+
 	// Misc
 	implementation(libs.koin.core)
 	implementation(libs.koin.android)
 	implementation(libs.koin.compose)
 	implementation(libs.koin.compose.viewmodel)
+	implementation(libs.koin.androidx.workmanager)
 	implementation(libs.subsonicKotlin)
-	ksp(libs.androidx.room3.compiler)
-	coreLibraryDesugaring(libs.desugar.jdk.libs)
+	implementation(libs.jellyfin.core)
+	implementation(libs.jellyfin.model)
+	"defaultImplementation"(libs.antisocialcord)
+	implementation(libs.cryptohash)
+	implementation(libs.mimetypes)
+	implementation(libs.kotlinx.coroutines.guava)
 }

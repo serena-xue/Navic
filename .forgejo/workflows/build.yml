@@ -1,0 +1,213 @@
+name: Build
+
+on:
+  push:
+    paths:
+      - app/**
+      - core/**
+      - gradle/**
+      - vendor/**
+      - build.gradle.kts
+      - settings.gradle.kts
+      - .forgejo/workflows/build.yml
+      - "!**/strings.xml"
+    tags:
+      - 'v*'
+    branches:
+      - '*'
+  pull_request:
+    paths:
+      - app/**
+      - core/**
+      - gradle/**
+      - vendor/**
+      - build.gradle.kts
+      - settings.gradle.kts
+      - .forgejo/workflows/build.yml
+      - "!**/strings.xml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android:
+    name: Android
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
+
+      - name: Restore SDK cache
+        id: sdk
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.android/sdk
+          key: ${{ runner.os }}-sdk-${{ hashFiles('gradle/libs.versions.toml', 'vendor/androidx-media/libraries/decoder_ffmpeg/build.gradle.kts') }}
+
+      - name: Resolve FFmpeg cache key
+        id: ffmpeg-key
+        run: |
+          echo "key=ffmpeg-v2-$(git -C vendor/androidx-media rev-parse HEAD)-$(git -C vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore FFmpeg build
+        id: ffmpeg
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/android-libs
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/config.h
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/config_components.h
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/libavutil/avconfig.h
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/libavutil/ffversion.h
+          key: ${{ steps.ffmpeg-key.outputs.key }}
+
+      - name: Restore project cache
+        id: cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Setup JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # TODO: check if it's possible to remove this by replacing with something faster for accepting licenses
+      # this only seems to accept the licenses and nothing else, Gradle will download the SDK anyway (afaik)
+      - name: Setup Android SDK
+        uses: https://github.com/android-actions/setup-android@v4
+
+      - name: Build with Gradle (release)
+        id: build_release
+        if: ${{ (forgejo.event_name == 'push' || forgejo.event_name == 'workflow_dispatch') && env.SIGNING_KEY_ALIAS }}
+        env:
+          SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          SIGNING_STORE_FILE: ${{ github.workspace }}/release.keystore
+        run: |
+          echo "${{ secrets.KEYSTORE }}" | base64 -d > release.keystore
+          ./gradlew :app:packageDefaultRelease --stacktrace --no-daemon --no-watch-fs
+          mv app/build/outputs/apk/**/**/*.apk ./
+          ./gradlew :app:packageFdroidRelease --stacktrace --no-daemon --no-watch-fs
+          mv app/build/outputs/apk/**/**/*.apk ./
+          rm release.keystore
+
+      - name: Build with Gradle (debug)
+        id: build_debug
+        if: forgejo.event_name == 'pull_request' && forgejo.event.pull_request.head.repo.fork == true
+        run: |
+          ./gradlew :app:assembleDefaultDebug --stacktrace --no-daemon --no-watch-fs
+          mv app/build/outputs/apk/**/**/*.apk ./
+          ./gradlew :app:assembleFdroidDebug --stacktrace --no-daemon --no-watch-fs
+          mv app/build/outputs/apk/**/**/*.apk ./
+
+      - name: Upload APK artifact
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: navic-release-android
+          path: ./*.apk
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Save project cache
+        uses: actions/cache/save@v6
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+      - name: Save FFmpeg build
+        uses: actions/cache/save@v6
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        with:
+          path: |
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/android-libs
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/config.h
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/config_components.h
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/libavutil/avconfig.h
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/libavutil/ffversion.h
+          key: ${{ steps.ffmpeg.outputs.cache-primary-key }}
+
+      - name: Save SDK cache
+        uses: actions/cache/save@v6
+        if: steps.sdk.outputs.cache-hit != 'true'
+        with:
+          path: ~/.android/sdk
+          key: ${{ steps.sdk.outputs.cache-primary-key }}
+
+  upload-artifacts-to-discord:
+    name: Upload Artifacts to Discord
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/bleeding-edge')
+    needs: [ build-android ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifacts
+        uses: https://data.forgejo.org/forgejo/download-artifact@v4
+
+      - name: Post artifacts to Discord webhook
+        shell: bash
+        env:
+          CI_BUILD_WEBHOOK: ${{ secrets.CI_BUILD_WEBHOOK }}
+          BLEEDING_EDGE_CI_WEBHOOK: ${{ secrets.BLEEDING_EDGE_CI_WEBHOOK }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          shopt -s nullglob globstar
+          
+          if [ "$REF_NAME" = "bleeding-edge" ] && [ -n "$BLEEDING_EDGE_CI_WEBHOOK" ]; then
+            WEBHOOK_URL="$BLEEDING_EDGE_CI_WEBHOOK"
+          else
+            WEBHOOK_URL="$CI_BUILD_WEBHOOK"
+          fi
+
+          files=()
+          i=1
+          for file in **/*.apk; do
+            files+=("-F file${i}=@${file}")
+            ((i++))
+          done
+
+          if (( ${#files[@]} == 0 )); then
+            echo "No files to upload"
+            exit 0
+          fi
+
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          payload=$(jq -n --arg content "Builds for [${GITHUB_SHA::7}](<$run_url>)" '{$content}')
+
+          curl -XPOST "$WEBHOOK_URL" -F "payload_json=$payload" "${files[@]}"
+
+  create-release:
+    name: Create release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [ build-android ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifacts
+        uses: https://data.forgejo.org/forgejo/download-artifact@v4
+        with:
+          path: release
+
+      - name: Publish release
+        uses: actions/forgejo-release@v2.13.4
+        with:
+          direction: upload
+          release-dir: release
+          token: ${{ secrets.TOKEN }}
+          override: true
+          verbose: true
+          hide-archive-link: true
+          release-notes-assistant: true

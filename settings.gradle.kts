@@ -12,7 +12,8 @@ rootProject.name = "Navic"
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 pluginManagement {
-	includeBuild("androidx-media/build-logic-settings")
+	includeBuild("build-logic")
+	includeBuild("vendor/androidx-media/build-logic-settings")
 	repositories {
 		maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public") }
 		maven { url = uri("https://maven.aliyun.com/repository/google") }
@@ -54,8 +55,29 @@ dependencyResolutionManagement {
 				includeGroupAndSubgroups("dev.zt64.subsonic")
 			}
 		}
+		maven {
+			name = "Jitpack"
+			url = uri("https://jitpack.io")
+			content {
+				includeGroupAndSubgroups("com.github.Nightdavisao")
+			}
+		}
+		mavenCentral()
 	}
 }
 
-include(":app")
-includeMedia3(file("androidx-media"))
+include(
+	":app",
+
+	// Core
+	":core:common",
+	":core:database",
+	":core:designsystem",
+	":core:icons",
+	":core:model",
+	":core:preferences",
+	":core:server",
+	":core:widgets"
+)
+includeMedia3(file("vendor/androidx-media"))
+includeBuild("vendor/subsonic-kotlin")

@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -21,10 +22,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.dropUnlessResumed
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import paige.navic.R
+import paige.navic.designsystem.theme.defaultFont
 import paige.navic.di.LocalNavStack
 import paige.navic.di.LocalSharedTransitionScope
 import paige.navic.domain.model.DomainAlbum
@@ -32,20 +35,22 @@ import paige.navic.domain.model.DomainPlaylist
 import paige.navic.domain.model.DomainSongCollection
 import paige.navic.ui.component.common.CoverArt
 import paige.navic.ui.navigation.Screen
-import paige.navic.ui.theme.defaultFont
 import paige.navic.ui.util.EmphasizedDecelerateEasing
 
 @Composable
 fun CollectionDetailScreenHeadingRow(
 	collection: DomainSongCollection,
-	tab: String,
 	titleAlpha: Float
 ) {
 	val backStack = LocalNavStack.current
-	val sharedTransitionKey = "${tab}-${collection.id}-cover"
+	val sharedTransitionKey = "${collection.id}-cover"
 	with(LocalSharedTransitionScope.current) {
 		CoverArt(
 			coverArtId = collection.coverArtId,
+			coverVersion = (collection as? DomainPlaylist)
+				?.modifiedAt
+				?.toEpochMilliseconds()
+				?.toString(),
 			contentDescription = collection.name,
 			modifier = Modifier
 				.widthIn(0.dp, 420.dp)
@@ -81,32 +86,37 @@ fun CollectionDetailScreenHeadingRow(
 			horizontalAlignment = Alignment.CenterHorizontally
 		) {
 			Text(
-				collection.name ?: "[unknown album]",
+				text = collection.name ?: "[unknown album]",
 				style = MaterialTheme.typography.headlineSmall,
 				textAlign = TextAlign.Center,
 				modifier = Modifier
 			)
 			val subtitle = when (collection) {
-				is DomainAlbum -> collection.artistName
+				is DomainAlbum -> collection.displayArtist ?: collection.artistName
 				is DomainPlaylist -> collection.comment
 			}
 			subtitle?.let { subtitle ->
 				Text(
-					subtitle,
+					text = subtitle,
 					color = MaterialTheme.colorScheme.primary,
-					modifier = Modifier.clickable(
-						collection is DomainAlbum,
-						onClick = dropUnlessResumed {
-							(collection as? DomainAlbum)?.artistId?.let { id ->
-								backStack.add(Screen.ArtistDetail(id))
+					modifier = Modifier
+						.clickable(
+							enabled = collection is DomainAlbum,
+							onClick = dropUnlessResumed {
+								(collection as? DomainAlbum)?.artistId?.let { id ->
+									backStack.add(Screen.ArtistDetail(id))
+								}
 							}
-						}),
+						)
+						.sizeIn(maxWidth = 300.dp),
 					style = MaterialTheme.typography.bodyMedium,
-					fontFamily = defaultFont(grade = 100, round = 100f)
+					fontFamily = defaultFont(grade = 100, round = 100f),
+					overflow = TextOverflow.Ellipsis,
+					maxLines = 1
 				)
 			}
 			Text(
-				if (collection is DomainAlbum)
+				text = if (collection is DomainAlbum)
 					"${collection.genre ?: stringResource(R.string.info_unknown_genre)} • ${
 						collection.year ?: stringResource(
 							R.string.info_unknown_year
@@ -115,7 +125,9 @@ fun CollectionDetailScreenHeadingRow(
 				else stringResource(R.string.subtitle_playlist),
 				color = MaterialTheme.colorScheme.onSurfaceVariant,
 				style = MaterialTheme.typography.bodySmall,
-				fontFamily = defaultFont(grade = 100, round = 100f)
+				fontFamily = defaultFont(grade = 100, round = 100f),
+				overflow = TextOverflow.Ellipsis,
+				maxLines = 1
 			)
 		}
 	}

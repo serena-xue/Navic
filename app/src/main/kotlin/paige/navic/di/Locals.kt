@@ -14,7 +14,7 @@ import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
-import paige.navic.domain.manager.BottomBarScrollManager
+import paige.navic.domain.manager.ui.BottomBarScrollManager
 
 val LocalNavStack = staticCompositionLocalOf<NavBackStack<NavKey>> {
 	error("No NavBackStack provided")
@@ -46,4 +46,8 @@ val LocalSizeClass = staticCompositionLocalOf<WindowSizeClass> {
 @OptIn(ExperimentalMaterial3Api::class)
 val LocalSheetState = staticCompositionLocalOf<SheetState> {
 	error("LocalSheetState used outside of a sheet")
+}
+
+val LocalSetSheetGesturesEnabled = staticCompositionLocalOf<(Boolean) -> Unit> {
+	error("No SetSheetGestures provided")
 }

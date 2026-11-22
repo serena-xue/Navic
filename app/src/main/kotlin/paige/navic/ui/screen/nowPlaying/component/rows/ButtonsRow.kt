@@ -12,6 +12,9 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -29,7 +32,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -45,23 +47,24 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.compose.koinInject
 import paige.navic.R
-import paige.navic.ui.icons.Icons
-import paige.navic.ui.icons.filled.RepeatOn
-import paige.navic.ui.icons.filled.RepeatOneOn
-import paige.navic.ui.icons.filled.ShuffleOn
-import paige.navic.ui.icons.filled.SkipNext
-import paige.navic.ui.icons.filled.SkipPrevious
-import paige.navic.ui.icons.outlined.Repeat
-import paige.navic.ui.icons.outlined.Shuffle
-import paige.navic.shared.MediaPlayerViewModel
+import paige.navic.playback.PlayerRepository
+import paige.navic.icons.Icons
+import paige.navic.icons.filled.RepeatOn
+import paige.navic.icons.filled.RepeatOneOn
+import paige.navic.icons.filled.ShuffleOn
+import paige.navic.icons.filled.SkipNext
+import paige.navic.icons.filled.SkipPrevious
+import paige.navic.icons.outlined.Repeat
+import paige.navic.icons.outlined.Shuffle
 import paige.navic.ui.util.playPauseIconPainter
 
 @Composable
 fun NowPlayingButtonsRow() {
-	val player = koinInject<MediaPlayerViewModel>()
-	val playerState by player.uiState.collectAsState()
+	val player = koinInject<PlayerRepository>()
+	val playerState by player.uiState.collectAsStateWithLifecycle()
 	val interactionSource = remember { MutableInteractionSource() }
 	val isPressed by interactionSource.collectIsPressedAsState()
 	val scale = remember { Animatable(1f) }
@@ -117,13 +120,18 @@ fun NowPlayingButtonsRow() {
 			},
 			enabled = enabled,
 		) {
-			Icon(
-				imageVector = if (playerState.isShuffleEnabled)
-					Icons.Filled.ShuffleOn
-				else Icons.Outlined.Shuffle,
-				contentDescription = stringResource(R.string.action_shuffle),
-				modifier = Modifier.size(24.dp)
-			)
+			AnimatedContent(
+				targetState = playerState.isShuffleEnabled,
+				transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) }
+			) { isShuffle ->
+				Icon(
+					imageVector = if (isShuffle)
+						Icons.Filled.ShuffleOn
+					else Icons.Outlined.Shuffle,
+					contentDescription = stringResource(R.string.action_shuffle),
+					modifier = Modifier.size(24.dp)
+				)
+			}
 		}
 		IconButton(
 			modifier = Modifier.weight(1f).aspectRatio(1f),
@@ -200,15 +208,20 @@ fun NowPlayingButtonsRow() {
 			},
 			enabled = enabled,
 		) {
-			Icon(
-				imageVector = when (playerState.repeatMode) {
-					1 -> Icons.Filled.RepeatOneOn
-					2 -> Icons.Filled.RepeatOn
-					else -> Icons.Outlined.Repeat
-				},
-				contentDescription = null,
-				modifier = Modifier.size(24.dp)
-			)
+			AnimatedContent(
+				targetState = playerState.repeatMode,
+				transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) }
+			) { mode ->
+				Icon(
+					imageVector = when (mode) {
+						1 -> Icons.Filled.RepeatOneOn
+						2 -> Icons.Filled.RepeatOn
+						else -> Icons.Outlined.Repeat
+					},
+					contentDescription = null,
+					modifier = Modifier.size(24.dp)
+				)
+			}
 		}
 	}
 }

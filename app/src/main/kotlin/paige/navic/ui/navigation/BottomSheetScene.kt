@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheetProperties
@@ -25,6 +26,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -37,11 +42,11 @@ import androidx.navigation3.scene.OverlayScene
 import androidx.navigation3.scene.Scene
 import androidx.navigation3.scene.SceneStrategy
 import androidx.navigation3.scene.SceneStrategyScope
-import com.kyant.capsule.ContinuousCapsule
+import paige.navic.designsystem.theme.NavicTheme
 import paige.navic.di.LocalNavStack
+import paige.navic.di.LocalSetSheetGesturesEnabled
 import paige.navic.di.LocalSheetState
 import paige.navic.ui.component.sheet.ModalBottomSheet
-import paige.navic.ui.theme.NavicTheme
 import paige.navic.ui.util.rememberColorSchemeForCurrentSong
 import paige.navic.ui.util.rememberColorSchemeFromCoverArt
 
@@ -62,7 +67,10 @@ class BottomSheetScene<T : Any>(
 
 
 	override val content = @Composable {
-		sheetState = rememberBottomSheetState(SheetValue.Hidden)
+		sheetState = rememberBottomSheetState(
+			initialValue = SheetValue.Hidden,
+			enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
+		)
 		val lifecycleOwner = rememberLifecycleOwner()
 		val backStack = LocalNavStack.current
 		val coverArtId = entry.metadata[CoverArtIdKey]
@@ -74,8 +82,11 @@ class BottomSheetScene<T : Any>(
 		}
 
 		NavicTheme(colorScheme) {
+			var isGesturesEnabled by remember{ mutableStateOf(true) }
 			val currentColorScheme = MaterialTheme.colorScheme
+
 			ModalBottomSheet(
+				sheetGesturesEnabled = isGesturesEnabled,
 				onDismissRequest = onBack,
 				sheetState = sheetState,
 				properties = properties,
@@ -85,7 +96,7 @@ class BottomSheetScene<T : Any>(
 					Surface(
 						modifier = Modifier.padding(vertical = 5.dp),
 						color = currentColorScheme.primary,
-						shape = ContinuousCapsule,
+						shape = CircleShape,
 					) {
 						Box(Modifier.size(width = 32.dp, height = 4.dp))
 					}
@@ -93,7 +104,8 @@ class BottomSheetScene<T : Any>(
 			) {
 				CompositionLocalProvider(
 					LocalLifecycleOwner provides lifecycleOwner,
-					LocalSheetState provides sheetState
+					LocalSheetState provides sheetState,
+					LocalSetSheetGesturesEnabled provides { isGesturesEnabled = it }
 				) {
 					entry.Content()
 				}

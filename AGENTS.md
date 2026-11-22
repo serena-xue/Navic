@@ -23,11 +23,13 @@ Kotlin + Jetpack Compose。当前分支的主线工作是歌词显示。
 
 ## 2. 构建
 
-- 单模块 Android 应用 `:app`；`composeApp/` 不在 `settings.gradle.kts` 内，属于遗留目录，不要当模块用。
-- `androidx-media/` 是 git submodule（`Nightdavisao/android-media3`），`settings.gradle.kts` 会
-  `includeMedia3`，缺了它连配置阶段都过不去：先 `git submodule update --init --recursive`。
-- 工具链：Gradle wrapper、JDK 21（`jvmToolchain(21)`）、AGP 9.3.3、Kotlin 2.4.20、compileSdk 37.2、
-  minSdk 24。依赖走腾讯/阿里云镜像 + Google + Maven Central，`dev.zt64.subsonic` 走 Central Portal Snapshots。
+- 多模块工程：`:app` + `core/{common,database,designsystem,icons,model,preferences,server,widgets}`
+  + `build-logic`。`composeApp/` 只剩一个资源文件，不属于任何模块，不要往里放代码。
+- 两个 submodule 都在 `vendor/` 下（`vendor/androidx-media` = `Nightdavisao/android-media3`，
+  `vendor/subsonic-kotlin`），`settings.gradle.kts` 用 `includeMedia3` + `includeBuild` 接入；
+  缺了它们配置阶段就失败：先 `git submodule update --init --recursive`。
+- 工具链：Gradle wrapper（9.9）、JDK 21（`jvmToolchain(21)`）、AGP 9.3.3、Kotlin 2.4.20、
+  compileSdk 37.2、minSdk 24。依赖走腾讯/阿里云镜像 + Google + Maven Central，`dev.zt64.subsonic` 走 Central Portal Snapshots。
 - 常用命令：
 
   ```bash
@@ -44,11 +46,14 @@ app/src/main/kotlin/paige/navic/
   data/       Room3 库、DAO、实体、mapper
   domain/     模型、repository、parser、manager（偏好、播放、下载…）
   ui/         screen / component / navigation / theme
-  shared/     MediaPlayerViewModel 等跨端抽象
+  playback/   PlayerRepository（播放器门面）、exoplayer/ 实现
+  preferences/ PreferenceManager 等偏好（以 core/preferences 模块为源）
   di/         Koin 模块（AppModule / RepositoryModule / ManagerModule / ViewModelModule / Locals）
   util/       通用扩展
 ```
 
+- 领域模型在 `core/model`，数据库在 `core/database`，主题/形状在 `core/designsystem`——改模型要改对应模块。
+- 播放器统一经 `paige.navic.playback.PlayerRepository`（不要再用已删除的 `MediaPlayerViewModel`）。
 - DI 一律 Koin；页面级的 Koin 注入放在 screen 层，叶子 composable 只收参数与回调（状态提升）。
 - 主题是 Material3 Expressive（`MaterialExpressiveTheme`），形状走 `ContinuousRoundedRectangle`；
   `MotionScheme` 取自偏好 `animationStyle`。

@@ -27,12 +27,12 @@ import androidx.compose.ui.unit.sp
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.launch
 import paige.navic.R
+import paige.navic.designsystem.theme.warning
 import paige.navic.di.LocalSnackBarState
-import paige.navic.domain.model.DomainSong
 import paige.navic.domain.model.DomainSongArtist
-import paige.navic.ui.icons.Icons
-import paige.navic.ui.icons.filled.Explicit
-import paige.navic.ui.theme.warning
+import paige.navic.domain.model.SongInfo
+import paige.navic.icons.Icons
+import paige.navic.icons.filled.Explicit
 
 val InlineExplicitIcon = persistentMapOf(
 	"InlineExplicitIcon" to InlineTextContent(
@@ -69,20 +69,24 @@ fun AnnotatedString.Builder.appendBulletPoint()
 
 fun AnnotatedString.Builder.appendArtists(
 	artists: List<DomainSongArtist>,
-	onClick: (artistId: String) -> Unit
+	onClick: ((artistId: String) -> Unit)? = null
 ) {
 	val listener = LinkInteractionListener { annotation ->
 		val artistId = (annotation as LinkAnnotation.Clickable).tag
-		onClick(artistId)
+		onClick?.invoke(artistId)
 	}
 	artists.forEachIndexed { index, artist ->
-		withLink(
-			link = LinkAnnotation.Clickable(
-				linkInteractionListener = listener,
-				tag = artist.id,
-				styles = TextLinkStyles()
-			)
-		) {
+		if (onClick != null) {
+			withLink(
+				link = LinkAnnotation.Clickable(
+					linkInteractionListener = listener,
+					tag = artist.id,
+					styles = TextLinkStyles()
+				)
+			) {
+				append(artist.name)
+			}
+		} else {
 			append(artist.name)
 		}
 		if (index != artists.lastIndex) {
@@ -93,8 +97,8 @@ fun AnnotatedString.Builder.appendArtists(
 
 @Composable
 fun buildSongInfoString(
-	song: DomainSong,
-	onClickArtist: (artistId: String) -> Unit,
+	song: SongInfo,
+	onClickArtist: ((artistId: String) -> Unit)? = null,
 	showExternal: Boolean = true,
 	showAlbum: Boolean = true,
 	showYear: Boolean = true,

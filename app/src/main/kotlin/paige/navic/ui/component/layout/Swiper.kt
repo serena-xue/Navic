@@ -43,10 +43,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
-import paige.navic.domain.manager.PreferenceManager
-import paige.navic.ui.icons.Icons
-import paige.navic.ui.icons.filled.SkipNext
-import paige.navic.ui.icons.filled.SkipPrevious
+import paige.navic.icons.Icons
+import paige.navic.icons.filled.SkipNext
+import paige.navic.icons.filled.SkipPrevious
+import paige.navic.preferences.PreferenceManager
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -54,12 +54,14 @@ import kotlin.math.roundToInt
 fun Swiper(
 	onSwipeLeft: () -> Unit,
 	onSwipeRight: () -> Unit,
+	onSwipeUp: () -> Unit,
+	onSwipeDown: () -> Unit,
 	swipeLeftAccessibilityLabel: String,
 	swipeRightAccessibilityLabel: String,
 	modifier: Modifier = Modifier,
-	swipeThreshold: Float = 200f,
+	swipeThresholdX: Float = 200f,
+	swipeThresholdY: Float = 100f,
 	enabled: Boolean = true,
-	enableHaptics: Boolean = true,
 	background: @Composable (BoxScope.() -> Unit)? = null,
 	content: @Composable BoxScope.() -> Unit
 ) {
@@ -68,14 +70,15 @@ fun Swiper(
 	val haptic = LocalHapticFeedback.current
 
 	val offsetX = remember { Animatable(0f) }
+	val offsetY = remember { Animatable(0f) }
 
-	var isPastThreshold by remember { mutableStateOf(false) }
+	var isPastXThreshold by remember { mutableStateOf(false) }
 
-	fun handleSwipeRelease() {
+	fun handleSwipeXRelease() {
 		coroutineScope.launch {
 			val targetValue = offsetX.value
 
-			if (abs(targetValue) > swipeThreshold) {
+			if (abs(targetValue) > swipeThresholdX) {
 				if (targetValue > 0) {
 					onSwipeRight()
 				} else {
@@ -97,17 +100,41 @@ fun Swiper(
 		}
 	}
 
+	fun handleSwipeYRelease() {
+		coroutineScope.launch {
+			if (offsetY.value > swipeThresholdY) {
+				offsetY.animateTo(offsetY.value * 5)
+				onSwipeDown()
+			} else if (offsetY.value < -swipeThresholdY) {
+				onSwipeUp()
+				offsetY.animateTo(0f)
+			} else {
+				offsetY.animateTo(0f)
+			}
+		}
+	}
+
+	LaunchedEffect(offsetX.value) {
+		val pastLimit = abs(offsetX.value) > swipeThresholdX
+		if (pastLimit && !isPastXThreshold) {
+			haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+		}
+		isPastXThreshold = pastLimit
+	}
+
 	Box(
 		modifier = modifier
 			.fillMaxWidth(),
 		contentAlignment = Alignment.Center
 	) {
-		val progress = (abs(offsetX.value) / swipeThreshold).coerceAtLeast(0f)
+		val progress = (abs(offsetX.value) / swipeThresholdX).coerceAtLeast(0f)
 
 		background?.invoke(this@Box)
 
 		Row(
-			modifier = Modifier.matchParentSize().padding(horizontal = 16.dp),
+			modifier = Modifier
+				.matchParentSize()
+				.padding(horizontal = 16.dp),
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.SpaceBetween
 		) {
@@ -125,7 +152,7 @@ fun Swiper(
 
 		Box(
 			modifier = Modifier
-				.offset { IntOffset(offsetX.value.roundToInt(), 0) }
+				.offset { IntOffset(offsetX.value.roundToInt(), offsetY.value.roundToInt()) }
 				.draggable(
 					enabled = enabled && preferenceManager.swipeToSkip,
 					orientation = Orientation.Horizontal,
@@ -134,40 +161,41 @@ fun Swiper(
 							offsetX.snapTo(offsetX.value + delta)
 						}
 					},
-					onDragStopped = {
-						handleSwipeRelease()
-					}
+					onDragStopped = { handleSwipeXRelease() }
 				)
-				.then(if (enabled) {
-					Modifier.semantics {
-						customActions = listOf(
-							CustomAccessibilityAction(
-								label = swipeLeftAccessibilityLabel,
-								action = {
-									onSwipeLeft()
-									true
-								}
-							),
-							CustomAccessibilityAction(
-								label = swipeRightAccessibilityLabel,
-								action = {
-									onSwipeRight()
-									true
-								}
+				.draggable(
+					enabled = enabled && preferenceManager.hideIfIdle && preferenceManager.miniPlayerSwipeToDismiss,
+					orientation = Orientation.Vertical,
+					state = rememberDraggableState { delta ->
+						coroutineScope.launch {
+							offsetY.snapTo(offsetY.value + delta)
+						}
+					},
+					onDragStopped = { handleSwipeYRelease() }
+				)
+				.then(
+					if (enabled) {
+						Modifier.semantics {
+							customActions = listOf(
+								CustomAccessibilityAction(
+									label = swipeLeftAccessibilityLabel,
+									action = {
+										onSwipeLeft()
+										true
+									}
+								),
+								CustomAccessibilityAction(
+									label = swipeRightAccessibilityLabel,
+									action = {
+										onSwipeRight()
+										true
+									}
+								)
 							)
-						)
-					}
-				} else Modifier)
+						}
+					} else Modifier)
 		) {
 			content()
-		}
-
-		LaunchedEffect(offsetX.value) {
-			val pastLimit = abs(offsetX.value) > swipeThreshold
-			if (pastLimit && !isPastThreshold && enableHaptics) {
-				haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-			}
-			isPastThreshold = pastLimit
 		}
 	}
 }

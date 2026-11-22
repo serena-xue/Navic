@@ -35,25 +35,33 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.compose.koinInject
 import paige.navic.R
-import paige.navic.domain.manager.ConnectivityManager
-import paige.navic.domain.manager.PreferenceManager
+import paige.navic.domain.manager.session.SessionManager
+import paige.navic.domain.manager.session.connectivity.ReachabilityFlow
+import paige.navic.domain.manager.session.isJellyfin
+import paige.navic.domain.manager.session.supportsExtension
 import paige.navic.domain.model.settings.StreamingQuality
 import paige.navic.domain.model.settings.description
-import paige.navic.ui.icons.Icons
-import paige.navic.ui.icons.outlined.Info
+import paige.navic.domain.server.ServerExtension
+import paige.navic.icons.Icons
+import paige.navic.icons.outlined.Info
+import paige.navic.preferences.PreferenceManager
 import paige.navic.ui.component.common.SegmentedListItemDefaults
 import paige.navic.ui.component.layout.NestedTopBar
 import paige.navic.ui.screen.settings.component.SettingsGroup
 import paige.navic.ui.screen.settings.component.SettingsGroupDefaults
 import paige.navic.ui.screen.settings.component.SettingsRadioItem
 import paige.navic.ui.screen.settings.component.SettingsToggleItem
+import paige.navic.ui.util.label
 
 @Composable
 fun SettingsStreamingQualityScreen() {
 	val preferenceManager = koinInject<PreferenceManager>()
-	val connectivityManager = koinInject<ConnectivityManager>()
-	val isOnline by connectivityManager.isOnline.collectAsStateWithLifecycle()
-	val isCellular by connectivityManager.isCellular.collectAsStateWithLifecycle()
+	val sessionManager = koinInject<SessionManager>()
+	val reachability = koinInject<ReachabilityFlow>()
+	val isReachable by reachability.isReachable.collectAsStateWithLifecycle()
+	val isMetered by reachability.isMetered.collectAsStateWithLifecycle()
+	val supportsTranscodeOffset = sessionManager.isJellyfin()
+		|| sessionManager.supportsExtension(ServerExtension.OPENSUBSONIC_TRANSCODE_OFFSET)
 
 	Scaffold(
 		topBar = { NestedTopBar({ Text(stringResource(R.string.title_streaming_quality)) }) }
@@ -67,6 +75,24 @@ fun SettingsStreamingQualityScreen() {
 					.verticalScroll(rememberScrollState())
 					.padding(horizontal = 16.dp)
 			) {
+				AnimatedVisibility(visible = !supportsTranscodeOffset) {
+					Row(
+						modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+						horizontalArrangement = Arrangement.spacedBy(16.dp)
+					) {
+						Icon(
+							Icons.Outlined.Info,
+							contentDescription = null,
+							tint = MaterialTheme.colorScheme.onSurfaceVariant
+						)
+						Text(
+							stringResource(R.string.info_transcode_streaming_unsupported),
+							color = MaterialTheme.colorScheme.onSurfaceVariant,
+							style = MaterialTheme.typography.bodyMedium
+						)
+					}
+				}
+
 				AnimatedVisibility(visible = !preferenceManager.isAdvancedTranscodingActive) {
 					SettingsGroup(
 						modifier = Modifier
@@ -75,7 +101,7 @@ fun SettingsStreamingQualityScreen() {
 						title = {
 							Text(buildString {
 								append(stringResource(R.string.title_wifi))
-								if (isOnline && !isCellular) {
+								if (isReachable && !isMetered) {
 									append(' ' + stringResource(R.string.info_in_use))
 								}
 							})
@@ -83,7 +109,8 @@ fun SettingsStreamingQualityScreen() {
 					) {
 						RadioButtons(
 							value = preferenceManager.streamingQualityWifi,
-							onChangeValue = { preferenceManager.streamingQualityWifi = it }
+							onChangeValue = { preferenceManager.streamingQualityWifi = it },
+							enabled = supportsTranscodeOffset
 						)
 					}
 				}
@@ -96,7 +123,7 @@ fun SettingsStreamingQualityScreen() {
 						title = {
 							Text(buildString {
 								append(stringResource(R.string.title_cellular))
-								if (isOnline && isCellular) {
+								if (isReachable && isMetered) {
 									append(' ' + stringResource(R.string.info_in_use))
 								}
 							})
@@ -104,7 +131,8 @@ fun SettingsStreamingQualityScreen() {
 					) {
 						RadioButtons(
 							value = preferenceManager.streamingQualityCellular,
-							onChangeValue = { preferenceManager.streamingQualityCellular = it }
+							onChangeValue = { preferenceManager.streamingQualityCellular = it },
+							enabled = supportsTranscodeOffset
 						)
 					}
 				}
@@ -115,14 +143,14 @@ fun SettingsStreamingQualityScreen() {
 				) {
 					SettingsToggleItem(
 						checked = preferenceManager.isAdvancedTranscodingActive,
+						enabled = supportsTranscodeOffset,
 						onCheckedChange = { preferenceManager.isAdvancedTranscodingActive = it },
-						content = { Text(stringResource(R.string.option_stream_custom_quality)) },
-						shapes = SegmentedListItemDefaults.segmentedShapes(index = 0, count = 1)
+						content = { Text(stringResource(R.string.option_stream_custom_quality)) }
 					)
 				}
 
 				AnimatedVisibility(visible = preferenceManager.isAdvancedTranscodingActive) {
-					CustomOptions()
+					CustomOptions(enabled = supportsTranscodeOffset)
 				}
 
 				Row(
@@ -148,7 +176,8 @@ fun SettingsStreamingQualityScreen() {
 @Composable
 private fun RadioButtons(
 	value: StreamingQuality,
-	onChangeValue: (StreamingQuality) -> Unit
+	onChangeValue: (StreamingQuality) -> Unit,
+	enabled: Boolean
 ) {
 	StreamingQuality.entries.forEachIndexed { index, quality ->
 		val selected = value == quality
@@ -156,7 +185,8 @@ private fun RadioButtons(
 		SettingsRadioItem(
 			selected = selected,
 			onClick = { onChangeValue(quality) },
-			content = { Text(stringResource(quality.displayName)) },
+			enabled = enabled,
+			content = { Text(quality.label()) },
 			supportingContent = {
 				quality.description()?.let { description ->
 					AnimatedVisibility(visible = selected) {
@@ -173,14 +203,10 @@ private fun RadioButtons(
 }
 
 @Composable
-private fun CustomOptions() {
+private fun CustomOptions(enabled: Boolean) {
 	val preferenceManager = koinInject<PreferenceManager>()
-	var wifiInput by remember {
-		val current = preferenceManager.customMaxBitrateWifi
-		mutableStateOf(if (current > 0) current.toString() else "")
-	}
-	var cellularInput by remember {
-		val current = preferenceManager.customMaxBitrateCellular
+	var bitrateInput by remember {
+		val current = preferenceManager.customMaxBitrate
 		mutableStateOf(if (current > 0) current.toString() else "")
 	}
 
@@ -189,51 +215,29 @@ private fun CustomOptions() {
 		verticalArrangement = Arrangement.spacedBy(8.dp)
 	) {
 		OutlinedTextField(
-			value = wifiInput,
+			value = bitrateInput,
 			onValueChange = { newValue ->
 				if (newValue.isEmpty() || newValue.all { it.isDigit() }) {
-					wifiInput = newValue
-					preferenceManager.customMaxBitrateWifi =
+					bitrateInput = newValue
+					preferenceManager.customMaxBitrate =
 						newValue.toIntOrNull() ?: 0
 				}
 			},
-			label = { Text(stringResource(R.string.option_max_bitrate_wifi)) },
+			label = { Text(stringResource(R.string.option_max_bitrate)) },
 			placeholder = { Text("0") },
 			keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
 			modifier = Modifier.fillMaxWidth(),
+			enabled = enabled,
 			singleLine = true
 		)
 
 		OutlinedTextField(
-			value = cellularInput,
-			onValueChange = { newValue ->
-				if (newValue.isEmpty() || newValue.all { it.isDigit() }) {
-					cellularInput = newValue
-					preferenceManager.customMaxBitrateCellular =
-						newValue.toIntOrNull() ?: 0
-				}
-			},
-			label = { Text(stringResource(R.string.option_max_bitrate_cellular)) },
-			placeholder = { Text("0") },
-			keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-			modifier = Modifier.fillMaxWidth(),
-			singleLine = true
-		)
-
-		OutlinedTextField(
-			value = preferenceManager.customFormatWifi,
-			onValueChange = { preferenceManager.customFormatWifi = it },
-			label = { Text(stringResource(R.string.option_stream_format_wifi)) },
-			modifier = Modifier.fillMaxWidth(),
-			singleLine = true
-		)
-
-		OutlinedTextField(
-			value = preferenceManager.customFormatCellular,
-			onValueChange = { preferenceManager.customFormatCellular = it },
-			label = { Text(stringResource(R.string.option_stream_format_cellular)) },
+			value = preferenceManager.customFormat,
+			onValueChange = { preferenceManager.customFormat = it },
+			label = { Text(stringResource(R.string.option_stream_format)) },
 			supportingText = { Text(stringResource(R.string.info_transcoding_defaults)) },
 			modifier = Modifier.fillMaxWidth(),
+			enabled = enabled,
 			singleLine = true
 		)
 	}

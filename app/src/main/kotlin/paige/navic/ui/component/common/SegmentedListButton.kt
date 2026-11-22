@@ -34,7 +34,7 @@ fun SegmentedListButton(
 	onClick: () -> Unit,
 	enabled: Boolean = true,
 	interactionSource: MutableInteractionSource? = null,
-	shapes: SegmentedListButtonShapes,
+	shapes: SegmentedListButtonShapes = SegmentedListButtonDefaults.shapes(),
 	colors: SegmentedListButtonColors = SegmentedListButtonDefaults.colors(),
 	horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(
 		space = 4.dp,
@@ -55,6 +55,7 @@ fun SegmentedListButton(
 				.clickable(
 					onClick = onClick,
 					role = Role.Button,
+					enabled = enabled,
 					interactionSource = interactionSource
 				)
 		) {
@@ -111,6 +112,9 @@ object SegmentedListButtonDefaults {
 		disabledContainerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
 		disabledContentColor = MaterialTheme.colorScheme.onError.copy(alpha = 0.5f)
 	)
+
+	@Composable
+	fun shapes() = shapes(index = 0, count = 1)
 
 	@Composable
 	fun shapes(

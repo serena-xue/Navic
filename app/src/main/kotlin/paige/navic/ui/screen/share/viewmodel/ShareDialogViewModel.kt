@@ -11,7 +11,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import paige.navic.domain.manager.SessionManager
+import paige.navic.domain.manager.session.SessionManager
 import paige.navic.ui.core.UiState
 import kotlin.time.Clock
 import kotlin.time.Duration
@@ -24,15 +24,22 @@ class ShareDialogViewModel(
 
 	fun share(
 		id: String,
-		expiry: Duration?
+		expiry: Duration?,
+		description: String? = null,
+		downloadable: Boolean = false
 	) {
 		viewModelScope.launch {
 			state.value = UiState.Loading()
 			try {
 				val expiration = expiry?.let { Clock.System.now() + it }
-				val url = sessionManager.api
-					.createShare(listOf(id), expiresAt = expiration)
-					.url
+				val url = sessionManager.shares
+					?.createShare(
+						ids = listOf(id),
+						description = description,
+						expiresAt = expiration,
+						downloadable = downloadable
+					)
+					?.url
 				state.value = UiState.Success(url)
 			} catch (e: Exception) {
 				state.value = UiState.Error(e)

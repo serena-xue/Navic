@@ -7,6 +7,7 @@
 package paige.navic
 
 import android.annotation.SuppressLint
+import android.content.Context
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
@@ -16,20 +17,25 @@ import androidx.compose.animation.core.EaseOutQuart
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.unveilIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy.Companion.detailPane
 import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy.Companion.listPane
@@ -40,7 +46,6 @@ import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,27 +68,30 @@ import androidx.navigation3.ui.NavDisplay
 import androidx.navigation3.ui.NavDisplay.popTransitionSpec
 import androidx.navigation3.ui.NavDisplay.predictivePopTransitionSpec
 import androidx.navigation3.ui.NavDisplay.transitionSpec
+import androidx.navigationevent.NavigationEvent
 import androidx.savedstate.serialization.SavedStateConfiguration
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import org.koin.compose.koinInject
+import paige.navic.designsystem.theme.NavicTheme
 import paige.navic.di.LocalBottomBarScrollManager
 import paige.navic.di.LocalNavStack
 import paige.navic.di.LocalSharedTransitionScope
 import paige.navic.di.LocalSizeClass
 import paige.navic.di.LocalSnackBarState
-import paige.navic.domain.manager.BottomBarScrollManager
-import paige.navic.domain.manager.PreferenceManager
-import paige.navic.domain.manager.SessionManager
-import paige.navic.domain.manager.SnackBarManager
+import paige.navic.domain.manager.session.SessionManager
+import paige.navic.domain.manager.session.SessionState
+import paige.navic.domain.manager.ui.BottomBarScrollManager
+import paige.navic.domain.manager.ui.SnackBarManager
 import paige.navic.domain.model.settings.ExplicitContentPlayback
-import paige.navic.generated.BuildInfo
-import paige.navic.shared.MediaPlayerViewModel
+import paige.navic.playback.PlayerRepository
+import paige.navic.preferences.PreferenceManager
 import paige.navic.ui.component.layout.SideBar
 import paige.navic.ui.component.sheet.ChangelogSheet
 import paige.navic.ui.component.snackbar.NavicSnackBar
+import paige.navic.ui.component.snackbar.SwipeableSnackBarHost
 import paige.navic.ui.navigation.BottomSheetSceneStrategy
 import paige.navic.ui.navigation.NowPlayingSceneStrategy
 import paige.navic.ui.navigation.Screen
@@ -108,6 +116,7 @@ import paige.navic.ui.screen.settings.AudioEffectsScreen
 import paige.navic.ui.screen.settings.BottomBarScreen
 import paige.navic.ui.screen.settings.FontsScreen
 import paige.navic.ui.screen.settings.SettingsAboutScreen
+import paige.navic.ui.screen.settings.SettingsAlternativeAddressesScreen
 import paige.navic.ui.screen.settings.SettingsAppIconScreen
 import paige.navic.ui.screen.settings.SettingsAppearanceScreen
 import paige.navic.ui.screen.settings.SettingsConnectionOptionsScreen
@@ -128,7 +137,6 @@ import paige.navic.ui.screen.song.SongDetailSheet
 import paige.navic.ui.screen.song.SongListScreen
 import paige.navic.ui.screen.starred.StarredScreen
 import paige.navic.ui.screen.stats.StatisticsScreen
-import paige.navic.ui.theme.NavicTheme
 import paige.navic.ui.util.Material3Transitions
 
 @OptIn(ExperimentalSerializationApi::class)
@@ -146,27 +154,61 @@ fun App() {
 	val density = LocalDensity.current
 	val activity = LocalActivity.current!!
 	val resources = LocalResources.current
+	val context = koinInject<Context>()
 
 	val sizeClass = calculateWindowSizeClass(activity)
 	val sessionManager = koinInject<SessionManager>()
 	val preferenceManager = koinInject<PreferenceManager>()
 
-	val isLoggedIn by sessionManager.isLoggedIn.collectAsStateWithLifecycle()
+	val sessionState by sessionManager.sessionState.collectAsStateWithLifecycle()
 	val backStack = rememberNavBackStack(
-		config, if (isLoggedIn) {
-			Screen.Library()
-		} else {
+		config, if (sessionState is SessionState.Unauthenticated) {
 			Screen.Login
+		} else {
+			Screen.Library()
 		}
 	)
+
+	LaunchedEffect(sessionState) {
+		when (sessionState) {
+			is SessionState.Unauthenticated if backStack.lastOrNull() != Screen.Login -> {
+				backStack.clear()
+				backStack.add(Screen.Login)
+			}
+
+			is SessionState.Authenticated if backStack.lastOrNull() == Screen.Login -> {
+				backStack.clear()
+				backStack.add(Screen.Library())
+			}
+
+			is SessionState.Restoring if backStack.lastOrNull() == Screen.Login -> {
+				backStack.clear()
+				backStack.add(Screen.Library())
+			}
+			else -> {}
+		}
+	}
+
 	val snackBarState = remember { SnackbarHostState() }
 	val snackBarManager = koinInject<SnackBarManager>()
 
 	LaunchedEffect(Unit) {
 		snackBarManager.events.collectLatest { event ->
-			snackBarState.showSnackbar(
-				resources.getString(event.resource, *event.args.toTypedArray())
+			val actionLabelRes = event.actionLabelRes
+			val actionLabel = actionLabelRes?.let { resources.getString(it) }
+			val duration = if (actionLabelRes != null) {
+				SnackbarDuration.Long
+			} else {
+				SnackbarDuration.Short
+			}
+			val result = snackBarState.showSnackbar(
+				message = resources.getString(event.resource, *event.args.toTypedArray()),
+				actionLabel = actionLabel,
+				duration = duration
 			)
+			if (result == SnackbarResult.ActionPerformed) {
+				event.onAction?.invoke(context)
+			}
 		}
 	}
 
@@ -196,15 +238,19 @@ fun App() {
 			NavicTheme {
 				Row(modifier = Modifier.fillMaxSize()) {
 					if (sizeClass.widthSizeClass >= WindowWidthSizeClass.Medium
-						&& Screen.Login !in backStack) {
+						&& Screen.Login !in backStack
+					) {
 						SideBar()
 					}
 					@SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 					Scaffold(
 						modifier = Modifier.nestedScroll(scrollManager.connection),
 						snackbarHost = {
-							SnackbarHost(hostState = snackBarState) { snackBarData ->
-								NavicSnackBar(snackBarData = snackBarData)
+							SwipeableSnackBarHost(hostState = snackBarState) { snackBarData, offset ->
+								NavicSnackBar(
+									snackBarData = snackBarData,
+									modifier = Modifier.offset(x = offset)
+								)
 							}
 						}
 					) { _ ->
@@ -252,15 +298,23 @@ fun App() {
 									density
 								)
 							},
-							predictivePopTransitionSpec = {
+							predictivePopTransitionSpec = { edge ->
 								if (preferenceManager.enablePredictiveBackAnimations) {
-									slideInHorizontally(
-										animationSpec = tween(300, easing = EaseOutQuart),
-										initialOffsetX = { -it }
-									) togetherWith slideOutHorizontally(
-										animationSpec = tween(300, easing = EaseOutQuart),
-										targetOffsetX = { it }
-									)
+									val mult = if (edge == NavigationEvent.EDGE_RIGHT) -1 else 1
+									val enter = unveilIn()
+										.plus(scaleIn(initialScale = 0.25f))
+										.plus(
+											slideInHorizontally(
+											animationSpec = tween(500, easing = EaseOutQuart),
+											initialOffsetX = { (-it * 25) * mult }
+										))
+									val exit = scaleOut(targetScale = 0.9f)
+										.plus(
+											slideOutHorizontally(
+											animationSpec = tween(300, easing = EaseOutQuart),
+											targetOffsetX = { (it / 10) * mult }
+										))
+									enter togetherWith exit
 								} else {
 									ContentTransform(EnterTransition.None, ExitTransition.None)
 								}
@@ -268,7 +322,7 @@ fun App() {
 						)
 					}
 				}
-				if (preferenceManager.checkForUpdates && !BuildInfo.FDROID) {
+				if (preferenceManager.checkForUpdates && !BuildConfig.FDROID) {
 					ChangelogSheet()
 				}
 			}
@@ -343,8 +397,8 @@ private fun entryProvider(
 			NowPlayingScreen()
 		}
 		entry<Screen.Lyrics>(metadata = NowPlayingSceneStrategy.bottomSheet(isTransparent = true)) {
-			val player = koinInject<MediaPlayerViewModel>()
-			val playerState by player.uiState.collectAsState()
+			val player = koinInject<PlayerRepository>()
+			val playerState by player.uiState.collectAsStateWithLifecycle()
 			val song = playerState.currentSong
 			LyricsScreen(song)
 		}
@@ -355,7 +409,7 @@ private fun entryProvider(
 			PlaybackSpeedScreen()
 		}
 		entry<Screen.CollectionDetail>(metadata = detailPane("root")) { key ->
-			CollectionDetailScreen(key.collectionId, key.tab)
+			CollectionDetailScreen(key.collectionId)
 		}
 		entry<Screen.SongDetailScreen> { key ->
 			SongDetailScreen(
@@ -423,6 +477,9 @@ private fun entryProvider(
 		}
 		entry<Screen.Settings.ConnectionOptions> {
 			SettingsConnectionOptionsScreen()
+		}
+		entry<Screen.Settings.AlternativeAddresses> {
+			SettingsAlternativeAddressesScreen()
 		}
 		entry<Screen.Settings.CustomHeaders> {
 			SettingsCustomHeadersScreen()
