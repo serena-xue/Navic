@@ -22,6 +22,7 @@ import kotlinx.coroutines.cancel
 import paige.navic.domain.repository.PlayerStateRepository
 import paige.navic.playback.exoplayer.ExoStateHolder.Companion.COMMAND_REPEAT
 import paige.navic.playback.exoplayer.ExoStateHolder.Companion.COMMAND_SHUFFLE
+import paige.navic.playback.exoplayer.ExoStateHolder.Companion.COMMAND_STAR
 import paige.navic.playback.exoplayer.impl.BetterShuffleOrder
 import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.withContext
@@ -32,6 +33,7 @@ internal class MediaSessionCallback(
 	private val stateRepository: PlayerStateRepository,
 	private val instance: ExoPlayer,
 	private val library: AndroidAutoLibrary,
+	private val onToggleStar: suspend () -> Boolean?
 ) : MediaLibraryService.MediaLibrarySession.Callback {
 	private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -46,6 +48,7 @@ internal class MediaSessionCallback(
 		// keys
 		const val SHUFFLE_ORDER_KEY = "shuffle_order"
 		const val SHUFFLE_ENABLED_KEY = "shuffle_enabled"
+		const val STARRED_KEY = "starred"
 
 		// CarWith presents itself as a MIUI system package rather than Android Auto.
 		private val AUTOMOTIVE_PACKAGES = setOf(
@@ -68,6 +71,7 @@ internal class MediaSessionCallback(
 				add(SessionCommand(COMMAND_SHUFFLE, Bundle.EMPTY))
 				add(SessionCommand(COMMAND_SHUFFLE_STATE, Bundle.EMPTY))
 				add(SessionCommand(COMMAND_REPEAT, Bundle.EMPTY))
+				add(SessionCommand(COMMAND_STAR, Bundle.EMPTY))
 			}
 			.build()
 
@@ -102,6 +106,17 @@ internal class MediaSessionCallback(
 		val resultExtras = Bundle()
 
 		when (customCommand.customAction) {
+			COMMAND_STAR -> {
+				return scope.future {
+					val starred = onToggleStar()
+						?: return@future SessionResult(SessionResult.RESULT_ERROR_UNKNOWN)
+					SessionResult(
+						SessionResult.RESULT_SUCCESS,
+						Bundle().apply { putBoolean(STARRED_KEY, starred) }
+					)
+				}
+			}
+
 			COMMAND_SHUFFLE -> {
 				val enabled = args.getBoolean(
 					SHUFFLE_ENABLED_KEY, !instance.shuffleModeEnabled

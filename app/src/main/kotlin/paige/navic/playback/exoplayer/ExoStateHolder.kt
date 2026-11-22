@@ -56,10 +56,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import paige.navic.R
 import paige.navic.domain.manager.playback.EqualizerManager
 import paige.navic.preferences.PreferenceManager
@@ -69,6 +71,7 @@ import paige.navic.domain.manager.session.SyncManager
 import paige.navic.domain.manager.session.connectivity.ConnectivityManager
 import paige.navic.domain.manager.session.connectivity.ReachabilityFlow
 import paige.navic.domain.repository.PlayerStateRepository
+import paige.navic.domain.repository.SongRepository
 import paige.navic.playback.exoplayer.impl.BetterShuffleOrder
 import paige.navic.playback.exoplayer.impl.cache.NavicDataSource
 import paige.navic.playback.exoplayer.impl.library.AndroidAutoLibrary
@@ -89,6 +92,7 @@ class ExoStateHolder(
 	private val dataSource: NavicDataSource.NavicDataSourceFactory,
 	private val androidAutoLibrary: AndroidAutoLibrary,
 	private val stateRepository: PlayerStateRepository,
+	private val songRepository: SongRepository,
 	private val equalizerManager: EqualizerManager,
 	private val reachability: ReachabilityFlow,
 	private val syncManager: SyncManager,
@@ -99,9 +103,16 @@ class ExoStateHolder(
 	private val mutex = Mutex()
 	private val listenerScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 	private var equalizerJob: Job? = null
+	private var starStateJob: Job? = null
 	private var exoEqualizerManager: ExoEqualizerManager? = null
 	private var scrobbleListener: ScrobbleExoListener? = null
 	private var discordIntegration: ExoDiscordIntegration? = null
+
+	@Volatile
+	private var starTargetId: String? = null
+
+	@Volatile
+	private var currentSongStarred = false
 
 	private var isInitialized = false
 
@@ -273,6 +284,73 @@ class ExoStateHolder(
 				.setSessionCommand(SessionCommand(COMMAND_REPEAT, Bundle.EMPTY))
 				.build()
 		)
+
+		if (starTargetId != null) {
+			add(
+				CommandButton.Builder(
+					if (currentSongStarred) {
+						R.drawable.ic_star_filled
+					} else {
+						R.drawable.ic_star
+					}
+				)
+					.setDisplayName(
+						context.getString(
+							if (currentSongStarred) {
+								R.string.action_remove_star
+							} else {
+								R.string.action_star
+							}
+						)
+					)
+					.setSessionCommand(SessionCommand(COMMAND_STAR, Bundle.EMPTY))
+					.build()
+			)
+		}
+	}
+
+	private fun updateMediaButtons() {
+		if (!::mediaSession.isInitialized) return
+		val buttons = makeButtons(player)
+		mediaSession.setCustomLayout(buttons)
+		mediaSession.setMediaButtonPreferences(buttons)
+	}
+
+	private fun observeCurrentSongStar(mediaItem: MediaItem?) {
+		starStateJob?.cancel()
+		val songId = mediaItem?.mediaId
+			?.substringAfterLast(":")
+			?.takeIf { it.isNotBlank() && !it.startsWith("radio_") }
+		starTargetId = songId
+		if (songId == null) {
+			currentSongStarred = false
+			updateMediaButtons()
+			return
+		}
+
+		starStateJob = listenerScope.launch {
+			songRepository.observeSongStarred(songId).collectLatest { starred ->
+				currentSongStarred = starred
+				updateMediaButtons()
+			}
+		}
+	}
+
+	private suspend fun toggleCurrentSongStar(): Boolean? {
+		val songId = starTargetId ?: return null
+		val starred = songRepository.isSongStarred(songId)
+		if (starred) {
+			songRepository.unstarSong(songId)
+		} else {
+			songRepository.starSong(songId)
+		}
+		withContext(Dispatchers.Main) {
+			if (starTargetId == songId) {
+				currentSongStarred = !starred
+				updateMediaButtons()
+			}
+		}
+		return !starred
 	}
 
 	private val loadControl: LoadControl = DefaultLoadControl.Builder().apply {
@@ -343,11 +421,18 @@ class ExoStateHolder(
 				player.addListener(object : Player.Listener {
 					override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
 						shuffleEnabled = shuffleModeEnabled
-						mediaSession.setCustomLayout(makeButtons(player))
+						updateMediaButtons()
 					}
 
 					override fun onRepeatModeChanged(repeatMode: Int) {
-						mediaSession.setCustomLayout(makeButtons(player))
+						updateMediaButtons()
+					}
+
+					override fun onMediaItemTransition(
+						mediaItem: MediaItem?,
+						reason: Int
+					) {
+						observeCurrentSongStar(mediaItem)
 					}
 				})
 
@@ -399,7 +484,8 @@ class ExoStateHolder(
 				val callback = MediaSessionCallback(
 					stateRepository,
 					instance = it,
-					library = androidAutoLibrary
+					library = androidAutoLibrary,
+					onToggleStar = ::toggleCurrentSongStar
 				)
 				mediaSessionCallback = callback
 				mediaSession = MediaLibraryService.MediaLibrarySession.Builder(
@@ -410,6 +496,7 @@ class ExoStateHolder(
 					.setPeriodicPositionUpdateEnabled(false) // fix android auto queue randomly jumping to the top
 					.setSessionActivity(sessionPendingIntent)
 					.setCustomLayout(makeButtons(it))
+					.setMediaButtonPreferences(makeButtons(it))
 					.build()
 			}
 
@@ -440,6 +527,8 @@ class ExoStateHolder(
 
 		equalizerJob?.cancel()
 		equalizerJob = null
+		starStateJob?.cancel()
+		starStateJob = null
 		exoEqualizerManager?.releaseEqualizer()
 		exoEqualizerManager = null
 		scrobbleListener?.release()
@@ -484,6 +573,7 @@ class ExoStateHolder(
 	companion object {
 		const val COMMAND_SHUFFLE = "COMMAND_SHUFFLE"
 		const val COMMAND_REPEAT = "COMMAND_REPEAT"
+		const val COMMAND_STAR = "COMMAND_STAR"
 
 
 		fun newSessionToken(context: Context): SessionToken {

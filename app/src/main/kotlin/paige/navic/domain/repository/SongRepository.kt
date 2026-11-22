@@ -94,6 +94,7 @@ class SongRepository(
 	}
 
 	suspend fun isSongStarred(songId: String) = songDao.isSongStarred(songId)
+	fun observeSongStarred(songId: String) = songDao.observeSongStarred(songId)
 	suspend fun getSongRating(songId: String) = songDao.getSongRating(songId) ?: 0
 	suspend fun starSong(songId: String) {
 		songDao.updateSongStarredAt(songId, Clock.System.now())
