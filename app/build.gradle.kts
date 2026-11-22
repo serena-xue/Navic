@@ -45,10 +45,20 @@ android {
 		versionCode = 61
 		versionName = "v1.0.0-beta02"
 
+		// CI 可用 -Pnavic.abi=arm64-v8a（或逗号分隔多个）只打包指定 ABI，不传时保持原行为
+		val requestedAbis = project.providers.gradleProperty("navic.abi").orNull
+			?.split(',')
+			?.map(String::trim)
+			?.filter(String::isNotEmpty)
+			.orEmpty()
 		ndk {
-			abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
-			if (!isTaskRelease) {
-				abiFilters.addAll(listOf("x86_64", "x86"))
+			if (requestedAbis.isNotEmpty()) {
+				abiFilters.addAll(requestedAbis)
+			} else {
+				abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
+				if (!isTaskRelease) {
+					abiFilters.addAll(listOf("x86_64", "x86"))
+				}
 			}
 		}
 	}

@@ -1,0 +1,195 @@
+name: Release APK
+
+# 只手动触发。结构参考上游 .forgejo/workflows/build.yml（同一套 checkout/cache/签名流程），
+# 额外做的事：只构建 arm 版安装包，并把产物发布到 GitHub Release。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "发布标签（留空自动生成 build-<run>-<sha>）"
+        required: false
+        default: ""
+      flavor:
+        description: "产品风味（default 含全部功能，fdroid 不含非自由组件）"
+        type: choice
+        options:
+          - default
+          - fdroid
+        default: default
+      abi:
+        description: "目标 ABI（arm64-v8a 即 64 位安卓安装包）"
+        type: choice
+        options:
+          - arm64-v8a
+          - armeabi-v7a
+          - both
+        default: arm64-v8a
+      prerelease:
+        description: "标记为预发布"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android:
+    name: Build and release
+    runs-on: ubuntu-latest
+    env:
+      # 与上游一致的签名环境变量；secrets 缺失时退回 debug 签名（仍可直接安装）
+      SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      SIGNING_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      SIGNING_STORE_FILE: ${{ github.workspace }}/release.keystore
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
+
+      - name: Restore SDK cache
+        id: sdk
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.android/sdk
+          key: ${{ runner.os }}-sdk-${{ hashFiles('gradle/libs.versions.toml', 'vendor/androidx-media/libraries/decoder_ffmpeg/build.gradle.kts') }}
+
+      - name: Resolve FFmpeg cache key
+        id: ffmpeg-key
+        run: |
+          echo "key=ffmpeg-v2-$(git -C vendor/androidx-media rev-parse HEAD)-$(git -C vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore FFmpeg build
+        id: ffmpeg
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/android-libs
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/config.h
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/config_components.h
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/libavutil/avconfig.h
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/libavutil/ffversion.h
+          key: ${{ steps.ffmpeg-key.outputs.key }}
+
+      - name: Restore project cache
+        id: cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Setup JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # 只负责接受许可证并准备 cmdline-tools，具体的 platform / build-tools / NDK 由 Gradle 自己装
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Resolve build arguments
+        id: args
+        run: |
+          case "${{ inputs.abi }}" in
+            both) ABIS="arm64-v8a,armeabi-v7a" ;;
+            *)    ABIS="${{ inputs.abi }}" ;;
+          esac
+          VERSION=$(sed -n 's/^[[:space:]]*versionName = "\(.*\)"/\1/p' app/build.gradle.kts | head -1)
+          echo "abis=$ABIS" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "ABI=$ABIS version=$VERSION"
+
+      - name: Build signed release
+        if: ${{ env.SIGNING_KEY_ALIAS != '' }}
+        run: |
+          echo "${{ secrets.KEYSTORE }}" | base64 -d > release.keystore
+          ./gradlew ":app:package${{ inputs.flavor == 'fdroid' && 'Fdroid' || 'Default' }}Release" \
+            -Pnavic.abi=${{ steps.args.outputs.abis }} --stacktrace --no-daemon --no-watch-fs
+          rm -f release.keystore
+
+      - name: Build debug (no signing secrets)
+        if: ${{ env.SIGNING_KEY_ALIAS == '' }}
+        run: |
+          echo "::notice::未配置 KEY_ALIAS/KEYSTORE 等 secrets，改为构建 debug 签名包（可直接安装，但标记为 debug）"
+          ./gradlew ":app:assemble${{ inputs.flavor == 'fdroid' && 'Fdroid' || 'Default' }}Debug" \
+            -Pnavic.abi=${{ steps.args.outputs.abis }} --stacktrace --no-daemon --no-watch-fs
+
+      - name: Collect APK
+        run: |
+          mkdir -p out
+          find app/build/outputs/apk -name '*.apk' -exec cp {} out/ \;
+          cd out
+          for f in *.apk; do
+            mv "$f" "Navic-${{ steps.args.outputs.version }}-${{ steps.args.outputs.abis }}-${GITHUB_SHA:0:7}.apk"
+          done
+          ls -lh
+          sha256sum *.apk > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Save project cache
+        uses: actions/cache/save@v6
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+      - name: Save FFmpeg build
+        uses: actions/cache/save@v6
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        with:
+          path: |
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/android-libs
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/config.h
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/config_components.h
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/libavutil/avconfig.h
+            vendor/androidx-media/libraries/decoder_ffmpeg/src/main/jni/ffmpeg/libavutil/ffversion.h
+          key: ${{ steps.ffmpeg.outputs.cache-primary-key }}
+
+      - name: Save SDK cache
+        uses: actions/cache/save@v6
+        if: steps.sdk.outputs.cache-hit != 'true'
+        with:
+          path: ~/.android/sdk
+          key: ${{ steps.sdk.outputs.cache-primary-key }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: navic-apk-${{ steps.args.outputs.abis }}
+          path: |
+            out/*.apk
+            out/SHA256SUMS.txt
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.tag != '' && inputs.tag || format('build-{0}', github.run_number) }}
+          name: ${{ inputs.tag != '' && inputs.tag || format('{0} ({1})', steps.args.outputs.version, inputs.flavor) }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          files: |
+            out/*.apk
+            out/SHA256SUMS.txt
+          body: |
+            手动构建产物。
+
+            - 应用版本：`${{ steps.args.outputs.version }}`
+            - 风味：`${{ inputs.flavor }}`
+            - ABI：`${{ steps.args.outputs.abis }}`
+            - 签名：`${{ env.SIGNING_KEY_ALIAS != '' && 'release keystore' || 'debug（未配置签名 secrets）' }}`
+            - 提交：`${{ github.sha }}`
