@@ -221,25 +221,49 @@ class AndroidAutoLibrary(
 	}
 
 	suspend fun expand(mediaId: String): List<MediaItem> {
-		val songs = if (!mediaId.startsWith("$PLAYABLE_PREFIX:")) {
-			listOfNotNull(songDao.getPlayableSongById(mediaId))
-		} else {
-			val parsedEntity = mediaId.parseEntityIndex()
+		val songs = when {
+			mediaId.hasPrefix(ARTIST_PREFIX) -> albumDao.getAlbumsByArtistId(
+				mediaId.stripPrefix(ARTIST_PREFIX),
+				maxQueueSize,
+				0
+			).flatMap { album ->
+				songDao.getAlbumPlayableSongs(album.albumId, maxQueueSize, 0)
+			}.take(maxQueueSize)
 
-			when (parsedEntity.entityType) {
-				ALBUM_PREFIX -> songDao.getAlbumPlayableSongs(
-					albumId = parsedEntity.parentEntityId,
-					limit = maxQueueSize,
-					offset = parsedEntity.windowOffset()
-				)
+			mediaId.hasPrefix(ALBUM_PREFIX) -> songDao.getAlbumPlayableSongs(
+				albumId = mediaId.stripPrefix(ALBUM_PREFIX),
+				limit = maxQueueSize,
+				offset = 0
+			)
 
-				PLAYLIST_PREFIX -> playlistDao.getPlaylistPlayableSongs(
-					playlistId = parsedEntity.parentEntityId,
-					limit = maxQueueSize,
-					offset = parsedEntity.windowOffset()
-				)
+			mediaId.hasPrefix(PLAYLIST_PREFIX) -> playlistDao.getPlaylistPlayableSongs(
+				playlistId = mediaId.stripPrefix(PLAYLIST_PREFIX),
+				limit = maxQueueSize,
+				offset = 0
+			)
 
-				else -> listOfNotNull(songDao.getPlayableSongById(parsedEntity.entityId))
+			!mediaId.startsWith("$PLAYABLE_PREFIX:") -> {
+				listOfNotNull(songDao.getPlayableSongById(mediaId))
+			}
+
+			else -> {
+				val parsedEntity = mediaId.parseEntityIndex()
+
+				when (parsedEntity.entityType) {
+					ALBUM_PREFIX -> songDao.getAlbumPlayableSongs(
+						albumId = parsedEntity.parentEntityId,
+						limit = maxQueueSize,
+						offset = parsedEntity.windowOffset()
+					)
+
+					PLAYLIST_PREFIX -> playlistDao.getPlaylistPlayableSongs(
+						playlistId = parsedEntity.parentEntityId,
+						limit = maxQueueSize,
+						offset = parsedEntity.windowOffset()
+					)
+
+					else -> listOfNotNull(songDao.getPlayableSongById(parsedEntity.entityId))
+				}
 			}
 		}
 

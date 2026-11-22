@@ -46,6 +46,16 @@ internal class MediaSessionCallback(
 		// keys
 		const val SHUFFLE_ORDER_KEY = "shuffle_order"
 		const val SHUFFLE_ENABLED_KEY = "shuffle_enabled"
+
+		// CarWith presents itself as a MIUI system package rather than Android Auto.
+		private val AUTOMOTIVE_PACKAGES = setOf(
+			"com.google.android.projection.gearhead",
+			"com.google.android.car.media",
+			"com.miui.carlink"
+		)
+
+		// Only the first non-empty category is played for a voice query.
+		const val SEARCH_RESULT_LIMIT = 10
 	}
 
 	override fun onConnect(
@@ -171,11 +181,10 @@ internal class MediaSessionCallback(
 		controller: MediaSession.ControllerInfo,
 		mediaItems: List<MediaItem>
 	): ListenableFuture<List<MediaItem>> {
-		return if (controller.isAndroidAuto()) {
+		val needsResolution = controller.isAutomotive() || mediaItems.any { it.needsPlaybackResolution() }
+		return if (needsResolution) {
 			scope.future {
-				mediaItems.firstOrNull()
-					?.let { library.expand(it.mediaId) }
-					.orEmpty()
+				mediaItems.flatMap { resolveForPlayback(it) }
 			}
 		} else {
 			super.onAddMediaItems(mediaSession, controller, mediaItems)
@@ -189,7 +198,10 @@ internal class MediaSessionCallback(
 		startIndex: Int,
 		startPositionMs: Long
 	): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-		if (!controller.isAndroidAuto() || mediaItems.size != 1) {
+		val requestedItem = mediaItems.singleOrNull()
+		if (requestedItem == null ||
+			!(controller.isAutomotive() || requestedItem.needsPlaybackResolution())
+		) {
 			return super.onSetMediaItems(
 				mediaSession,
 				controller,
@@ -200,19 +212,39 @@ internal class MediaSessionCallback(
 		}
 
 		return scope.future {
-			val requestedItem = mediaItems.first()
-			val expandedItems = library.expand(requestedItem.mediaId)
+			val expandedItems = resolveForPlayback(requestedItem)
+			require(expandedItems.isNotEmpty()) { "No playable media found" }
+
 			val requestedSongId = requestedItem.mediaId.substringAfterLast(":")
-			val expandedIndex = expandedItems.indexOfFirst {
-				it.mediaId == requestedSongId
+			val expandedIndex = expandedItems.indexOfFirst { item ->
+				item.mediaId == requestedItem.mediaId ||
+					item.mediaId.substringAfterLast(":") == requestedSongId
 			}
 
 			MediaSession.MediaItemsWithStartPosition(
 				expandedItems,
-				expandedIndex.takeIf { it >= 0 } ?: startIndex,
+				expandedIndex.takeIf { it >= 0 }
+					?: startIndex.takeIf { it in expandedItems.indices }
+					?: 0,
 				startPositionMs
 			)
 		}
+	}
+
+	private fun MediaItem.needsPlaybackResolution(): Boolean =
+		requestMetadata.searchQuery != null ||
+			(localConfiguration == null && mediaId.isNotEmpty())
+
+	private suspend fun resolveForPlayback(item: MediaItem): List<MediaItem> {
+		val query = item.requestMetadata.searchQuery?.trim().orEmpty()
+		if (query.isNotEmpty()) {
+			return library.search(query, SEARCH_RESULT_LIMIT)
+				.firstNotNullOfOrNull { candidate ->
+					library.expand(candidate.mediaId).takeIf { it.isNotEmpty() }
+				}
+				.orEmpty()
+		}
+		return library.expand(item.mediaId)
 	}
 
 	override fun onSearch(
@@ -249,9 +281,8 @@ internal class MediaSessionCallback(
 			}
 		}
 
-	private fun MediaSession.ControllerInfo.isAndroidAuto(): Boolean =
-		packageName == "com.google.android.projection.gearhead" ||
-			packageName == "com.google.android.car.media"
+	private fun MediaSession.ControllerInfo.isAutomotive(): Boolean =
+		packageName in AUTOMOTIVE_PACKAGES
 
 	private fun androidx.media3.exoplayer.source.ShuffleOrder.toIntArray(): IntArray {
 		val order = IntArray(length)
