@@ -17,6 +17,7 @@ import org.koin.core.component.inject
 import paige.navic.R
 import paige.navic.domain.manager.runtime.NotificationIds
 import paige.navic.domain.manager.runtime.NotificationStringIds
+import paige.navic.playback.exoplayer.impl.notification.HyperOsMediaNotificationProvider
 
 @OptIn(UnstableApi::class)
 class ExoPlaybackService : MediaLibraryService(), KoinComponent {
@@ -39,7 +40,7 @@ class ExoPlaybackService : MediaLibraryService(), KoinComponent {
 				setSmallIcon(R.drawable.ic_navic)
 			}
 
-		setMediaNotificationProvider(notificationProvider)
+		setMediaNotificationProvider(HyperOsMediaNotificationProvider(notificationProvider))
 	}
 
 	override fun onGetSession(
