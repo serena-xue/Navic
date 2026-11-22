@@ -218,6 +218,7 @@ dependencies {
 	implementation(libs.composePipette)
 	implementation(libs.multiplatformSettings)
 	implementation(libs.accompanist.lyrics.ui)
+	implementation(libs.accompanist.lyrics.core)
 
 	// Paging
 	implementation(libs.androidx.paging.common)

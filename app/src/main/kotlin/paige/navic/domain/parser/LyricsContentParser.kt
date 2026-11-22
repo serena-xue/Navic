@@ -131,11 +131,13 @@ object LyricsContentParser {
 		return merged.mapIndexed { index, line ->
 			val start = line.time ?: return@mapIndexed line
 			val nextStart = merged.getOrNull(index + 1)?.time
+			// 模型已移到 core/model：跨模块的公开属性无法 smart cast，先取局部引用
+			val words = line.words
 			val inferredDuration = when {
 				nextStart != null -> (nextStart - start).coerceAtLeast(1.milliseconds)
 				line.duration != null -> line.duration
-				line.words?.isNotEmpty() == true -> {
-					val end = line.words.maxOf { it.time + it.duration }
+				!words.isNullOrEmpty() -> {
+					val end = words.maxOf { it.time + it.duration }
 					(end - start).coerceAtLeast(1.milliseconds)
 				}
 				else -> null
