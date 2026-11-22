@@ -30,26 +30,29 @@ import kotlin.time.Duration
 internal fun rememberPlaybackPosition(
 	progress: Float,
 	duration: Duration,
-	isPaused: Boolean
+	isPaused: Boolean,
+	offsetMillis: Long = 0L
 ): () -> Int {
 	val durationMillis = duration.inWholeMilliseconds.coerceAtLeast(0L)
 	val position = remember { mutableIntStateOf(0) }
 	val anchorPosition = remember { mutableLongStateOf(0L) }
 	val anchorRealtime = remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
 
-	LaunchedEffect(progress, durationMillis) {
+	// 歌词偏移：正数让歌词整体延后，负数提前
+	LaunchedEffect(progress, durationMillis, offsetMillis) {
 		anchorPosition.longValue = (progress * durationMillis).toLong()
 		anchorRealtime.longValue = SystemClock.elapsedRealtime()
-		position.intValue = anchorPosition.longValue.toInt()
+		position.intValue = (anchorPosition.longValue + offsetMillis)
+			.coerceIn(0L, durationMillis).toInt()
 	}
 
-	LaunchedEffect(isPaused, durationMillis) {
+	LaunchedEffect(isPaused, durationMillis, offsetMillis) {
 		if (isPaused) return@LaunchedEffect
 		while (true) {
 			withFrameNanos { }
 			val elapsed = SystemClock.elapsedRealtime() - anchorRealtime.longValue
-			position.intValue =
-				(anchorPosition.longValue + elapsed).coerceIn(0L, durationMillis).toInt()
+			position.intValue = (anchorPosition.longValue + elapsed + offsetMillis)
+				.coerceIn(0L, durationMillis).toInt()
 		}
 	}
 

@@ -626,4 +626,8 @@
 		<item quantity="other">%1$d lines selected</item>
 	</plurals>
 
+	<string name="action_done">Done</string>
+	<string name="action_lyrics_offset">Adjust lyric timing</string>
+	<string name="title_lyrics_offset">Lyric offset</string>
+	<string name="info_lyrics_offset_hint">Positive values delay the lyrics; saved for this song</string>
 </resources>

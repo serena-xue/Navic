@@ -14,20 +14,25 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -47,6 +52,7 @@ import paige.navic.ui.core.UiState
 import paige.navic.ui.navigation.PersistentViewModelStoreOwner
 import paige.navic.ui.navigation.Screen
 import paige.navic.ui.screen.lyrics.component.DEFAULT_BLUR_DELTA
+import paige.navic.ui.screen.lyrics.component.LyricsOffsetPanel
 import paige.navic.ui.screen.lyrics.component.LyricsScreenContent
 import paige.navic.ui.screen.lyrics.component.LyricsScreenLoadingView
 import paige.navic.ui.screen.lyrics.component.LyricsScreenPlaceholder
@@ -76,15 +82,21 @@ fun LyricsScreen(song: DomainSong?) {
 	val selectedIndices = rememberSaveable { mutableStateListOf<Int>() }
 	var wasPlayingBeforeSelection by rememberSaveable { mutableStateOf(false) }
 	var shareSheetOpen by rememberSaveable { mutableStateOf(false) }
+	var offsetPanelOpen by rememberSaveable { mutableStateOf(false) }
 
 	val currentSong = song ?: return LyricsScreenPlaceholder(
 		onRefresh = { viewModel.refreshResults() }
 	)
 	val duration = currentSong.duration
+	// 歌词偏移按歌曲单独保存：换歌时重新读取
+	var lyricOffsetMillis by rememberSaveable(currentSong.id) {
+		mutableLongStateOf(preferenceManager.lyricOffsetMillis(currentSong.id))
+	}
 	val positionProvider = rememberPlaybackPosition(
 		progress = playerState.progress,
 		duration = duration,
-		isPaused = playerState.isPaused
+		isPaused = playerState.isPaused,
+		offsetMillis = lyricOffsetMillis
 	)
 
 	val showArtworkBackground =
@@ -99,6 +111,7 @@ fun LyricsScreen(song: DomainSong?) {
 	val effectSpec = MaterialTheme.motionScheme.slowEffectsSpec<Float>()
 
 	val beginSelection: () -> Unit = {
+		offsetPanelOpen = false
 		if (!isSelecting) {
 			wasPlayingBeforeSelection = !playerState.isPaused
 			player.pause()
@@ -126,7 +139,8 @@ fun LyricsScreen(song: DomainSong?) {
 
 	val seekToLine: (Duration) -> Unit = { time ->
 		if (duration > Duration.ZERO) {
-			player.seek((time / duration).toFloat())
+			val target = (time - lyricOffsetMillis.milliseconds).coerceAtLeast(Duration.ZERO)
+			player.seek((target / duration).toFloat())
 			if (playerState.isPaused) {
 				player.resume()
 			}
@@ -156,6 +170,8 @@ fun LyricsScreen(song: DomainSong?) {
 				onShare = { shareSheetOpen = true },
 				isSelecting = isSelecting,
 				toggleIsSelecting = toggleIsSelecting,
+				isAdjustingOffset = offsetPanelOpen,
+				onAdjustOffset = { offsetPanelOpen = !offsetPanelOpen },
 				windowInsets = windowInsets,
 				selectedIndices = selectedIndices.toImmutableList()
 			)
@@ -214,6 +230,21 @@ fun LyricsScreen(song: DomainSong?) {
 						contentPadding = contentPadding
 					)
 				}
+			}
+
+			if (offsetPanelOpen) {
+				LyricsOffsetPanel(
+					offsetMillis = lyricOffsetMillis,
+					onOffsetChange = { millis ->
+						lyricOffsetMillis = millis
+						preferenceManager.setLyricOffsetMillis(currentSong.id, millis)
+					},
+					onDismiss = { offsetPanelOpen = false },
+					modifier = Modifier
+						.align(Alignment.BottomCenter)
+						.padding(horizontal = 16.dp)
+						.padding(bottom = contentPadding.calculateBottomPadding() + 16.dp)
+				)
 			}
 
 			if (shareSheetOpen) {

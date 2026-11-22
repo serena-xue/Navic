@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -28,6 +30,7 @@ import paige.navic.icons.outlined.ArrowBack
 import paige.navic.icons.outlined.Check
 import paige.navic.icons.outlined.KeyboardArrowDown
 import paige.navic.icons.outlined.Share
+import paige.navic.icons.outlined.Speed
 import paige.navic.ui.component.layout.TopBarButton
 import paige.navic.ui.component.toolbar.SheetToolbar
 
@@ -37,6 +40,8 @@ fun LyricsScreenToolbar(
 	onShare: () -> Unit,
 	isSelecting: Boolean,
 	toggleIsSelecting: () -> Unit,
+	isAdjustingOffset: Boolean,
+	onAdjustOffset: () -> Unit,
 	windowInsets: WindowInsets,
 	selectedIndices: ImmutableList<Int>
 ) {
@@ -68,6 +73,18 @@ fun LyricsScreenToolbar(
 			)
 		},
 		actions = {
+			TopBarButton(
+				enabled = !isSelecting,
+				onClick = onAdjustOffset
+			) {
+				Icon(
+					imageVector = Icons.Outlined.Speed,
+					contentDescription = stringResource(R.string.action_lyrics_offset),
+					tint = if (isAdjustingOffset) MaterialTheme.colorScheme.primary
+					else LocalContentColor.current,
+					modifier = Modifier.size(24.dp)
+				)
+			}
 			TopBarButton(
 				enabled = !isSelecting || selectedIndices.isNotEmpty(),
 				onClick = {

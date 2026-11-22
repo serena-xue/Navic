@@ -68,8 +68,20 @@ public class PreferenceManager(
 	var lyricsBeatByBeat by preference(true)
 	var lyricsFakeBeatByBeat by preference(false)
 	var lyricsKeepAlive by preference(true)
-	var lyricsBlur by preference(false)
+	var lyricsBlur by preference(true)
 	var lyricsBrightInactive by preference(false)
+
+	/**
+	 * 每首歌的歌词时间码偏移（毫秒），按 songId 单独保存。
+	 *
+	 * 正数表示歌词整体延后显示：用于歌词比歌曲本身超前时校正。
+	 */
+	public fun lyricOffsetMillis(songId: String): Long = settings.getLong(lyricOffsetKey(songId), 0L)
+
+	public fun setLyricOffsetMillis(songId: String, millis: Long) =
+		settings.putLong(lyricOffsetKey(songId), millis)
+
+	private fun lyricOffsetKey(songId: String) = "lyrics_offset_$songId"
 	var enableScrobbling by preference(true)
 	var scrobblePercentage by preference(.5f)
 	var minDurationToScrobble by preference(30f)
