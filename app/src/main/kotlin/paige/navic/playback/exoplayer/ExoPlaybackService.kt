@@ -50,7 +50,10 @@ class ExoPlaybackService : MediaLibraryService(), KoinComponent {
 	}
 
 	override fun onTaskRemoved(rootIntent: Intent?) {
-		pauseAllPlayersAndStopSelf()
+		// Keep an active session alive when the task is swiped away; only tear down a paused one.
+		if (!stateHolder.player.playWhenReady) {
+			pauseAllPlayersAndStopSelf()
+		}
 	}
 
 	override fun onDestroy() {
