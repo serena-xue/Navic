@@ -28,13 +28,17 @@ Kotlin + Jetpack Compose。当前分支的主线工作是歌词显示。
 - 两个 submodule 都在 `vendor/` 下（`vendor/androidx-media` = `Nightdavisao/android-media3`，
   `vendor/subsonic-kotlin`），`settings.gradle.kts` 用 `includeMedia3` + `includeBuild` 接入；
   缺了它们配置阶段就失败：先 `git submodule update --init --recursive`。
-- 工具链：Gradle wrapper（9.9）、JDK 21（`jvmToolchain(21)`）、AGP 9.3.3、Kotlin 2.4.20、
-  compileSdk 37.2、minSdk 24。依赖走腾讯/阿里云镜像 + Google + Maven Central，`dev.zt64.subsonic` 走 Central Portal Snapshots。
-- 常用命令：
+- 工具链：Gradle wrapper（9.9）、JDK 21（`jvmToolchain(21)`，`:app` 与 media3 用）、
+  **JDK 17**（`vendor/subsonic-kotlin` 的 `subsonic-client` 用 17 工具链；本机需可被 Gradle 发现，
+  否则会去 GitHub 下载并卡住）、AGP 9.3.3、Kotlin 2.4.21、compileSdk 37.2、minSdk 24。
+- 原生依赖：media3 的 `decoder_ffmpeg` 需要 NDK 28.2（AGP 会自动装），其 JNI 源码是嵌套 submodule
+  （`git.bigyoshinoyahead.nya.je/Navic/ffmpeg`），国内直连不通，git 里给这个域名配了代理才能 init。
+- 依赖仓库：`settings.gradle.kts` 里腾讯/阿里云镜像在前，`mavenCentral()` 兜底；Gradle 发行包走腾讯镜像。
+- 常用命令（注意有 product flavor，任务名必须带 flavor）：
 
   ```bash
-  ./gradlew :app:compileDebugKotlin     # 改动后最小验证
-  ./gradlew :app:assembleDebug          # 出包
+  ./gradlew :app:compileDefaultDebugKotlin   # 改动后最小验证（fdroid 风味用 compileFdroidDebugKotlin）
+  ./gradlew :app:assembleDefaultDebug        # 出包（需要 ffmpeg 原生库就绪）
   ```
 
 - 没有配置 ktlint / detekt 任务，风格检查用 ktlint CLI 手动跑（见第 4 节）。
