@@ -8,6 +8,7 @@ package paige.navic
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.net.Uri
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
@@ -93,8 +94,10 @@ import paige.navic.ui.component.sheet.ChangelogSheet
 import paige.navic.ui.component.snackbar.NavicSnackBar
 import paige.navic.ui.component.snackbar.SwipeableSnackBarHost
 import paige.navic.ui.navigation.BottomSheetSceneStrategy
+import paige.navic.ui.navigation.NavicDeepLink
 import paige.navic.ui.navigation.NowPlayingSceneStrategy
 import paige.navic.ui.navigation.Screen
+import paige.navic.ui.navigation.parseNavicDeepLink
 import paige.navic.ui.screen.album.AlbumListScreen
 import paige.navic.ui.screen.artist.ArtistDetailScreen
 import paige.navic.ui.screen.artist.ArtistListScreen
@@ -150,7 +153,10 @@ private val config = SavedStateConfiguration {
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
-fun App() {
+fun App(
+	deepLink: Uri? = null,
+	onDeepLinkHandled: () -> Unit = {}
+) {
 	val density = LocalDensity.current
 	val activity = LocalActivity.current!!
 	val resources = LocalResources.current
@@ -159,6 +165,7 @@ fun App() {
 	val sizeClass = calculateWindowSizeClass(activity)
 	val sessionManager = koinInject<SessionManager>()
 	val preferenceManager = koinInject<PreferenceManager>()
+	val player = koinInject<PlayerRepository>()
 
 	val sessionState by sessionManager.sessionState.collectAsStateWithLifecycle()
 	val backStack = rememberNavBackStack(
@@ -191,6 +198,26 @@ fun App() {
 
 	val snackBarState = remember { SnackbarHostState() }
 	val snackBarManager = koinInject<SnackBarManager>()
+
+	LaunchedEffect(deepLink, sessionState) {
+		if (deepLink == null || sessionState !is SessionState.Authenticated) {
+			return@LaunchedEffect
+		}
+		if (backStack.lastOrNull() == Screen.Login) {
+			backStack.clear()
+			backStack.add(Screen.Library())
+		}
+		when (val destination = parseNavicDeepLink(deepLink)) {
+			is NavicDeepLink.Open -> backStack.add(destination.screen)
+			is NavicDeepLink.Play -> {
+				player.playFromSearch(destination.query)
+				backStack.add(Screen.NowPlaying)
+			}
+
+			null -> {}
+		}
+		onDeepLinkHandled()
+	}
 
 	LaunchedEffect(Unit) {
 		snackBarManager.events.collectLatest { event ->

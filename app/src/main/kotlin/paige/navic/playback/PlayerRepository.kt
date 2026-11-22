@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import paige.navic.R
@@ -136,6 +137,26 @@ class PlayerRepository(
 
 	fun playNow(songs: List<DomainSong>, startIndex: Int = 0) {
 		playNowInternal(songs, startIndex)
+	}
+
+	fun playFromSearch(rawQuery: String) {
+		val query = rawQuery.trim()
+		if (query.isEmpty()) return
+
+		launch {
+			val player = controller ?: controllerFuture.await()
+			val item = MediaItem.Builder()
+				.setMediaId("search:$query")
+				.setRequestMetadata(
+					MediaItem.RequestMetadata.Builder()
+						.setSearchQuery(query)
+						.build()
+				)
+				.build()
+			player.setMediaItem(item)
+			player.prepare()
+			player.play()
+		}
 	}
 
 	private var lastQueueSnapshot: SavedQueueSnapshot? = null
