@@ -43,7 +43,10 @@ android {
 		applicationId = "paige.navic"
 		targetSdk = libs.versions.android.targetSdk.get().toInt()
 		versionCode = 61
-		versionName = "v1.0.0-beta02"
+		// CI 可通过 -Pnavic.versionName=... 覆盖；不传时保持本地默认版本
+		versionName = project.providers.gradleProperty("navic.versionName").orNull
+			?.takeIf(String::isNotBlank)
+			?: "v1.0.0-beta02"
 
 		// CI 可用 -Pnavic.abi=arm64-v8a（或逗号分隔多个）只打包指定 ABI，不传时保持原行为
 		val requestedAbis = project.providers.gradleProperty("navic.abi").orNull

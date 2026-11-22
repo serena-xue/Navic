@@ -6,8 +6,12 @@ name: Release APK
 on:
   workflow_dispatch:
     inputs:
+      version:
+        description: "应用版本号（留空自动生成北京时间 v1.0.0-betaYYYYMMDDHHmm）"
+        required: false
+        default: ""
       tag:
-        description: "发布标签（留空自动生成 build-<run>-<sha>）"
+        description: "发布标签（留空使用应用版本号）"
         required: false
         default: ""
       flavor:
@@ -44,6 +48,7 @@ jobs:
     env:
       # GitHub runner 在海外，必须用官方源；本地/国内默认走镜像
       NAVIC_CN_MIRRORS: "false"
+      TZ: Asia/Shanghai
       # 与上游一致的签名环境变量；secrets 缺失时退回 debug 签名（仍可直接安装）
       SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
       SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -107,9 +112,12 @@ jobs:
             both) ABIS="arm64-v8a,armeabi-v7a" ;;
             *)    ABIS="${{ inputs.abi }}" ;;
           esac
-          VERSION=$(sed -n 's/^[[:space:]]*versionName = "\(.*\)"/\1/p' app/build.gradle.kts | head -1)
+          VERSION="${{ inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="v1.0.0-beta$(date +%Y%m%d%H%M)"
+          fi
           echo "abis=$ABIS" >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "ABI=$ABIS version=$VERSION"
 
       - name: Build signed release
@@ -118,6 +126,7 @@ jobs:
           echo "${{ secrets.KEYSTORE }}" | base64 -d > release.keystore
           ./gradlew ":app:package${{ inputs.flavor == 'fdroid' && 'Fdroid' || 'Default' }}Release" \
             -Pnavic.abi=${{ steps.args.outputs.abis }} \
+            -Pnavic.versionName="${{ steps.args.outputs.version }}" \
             --stacktrace --no-daemon --no-watch-fs
           rm -f release.keystore
 
@@ -127,6 +136,7 @@ jobs:
           echo "::notice::未配置 KEY_ALIAS/KEYSTORE 等 secrets，改为构建 debug 签名包（可直接安装，但标记为 debug）"
           ./gradlew ":app:assemble${{ inputs.flavor == 'fdroid' && 'Fdroid' || 'Default' }}Debug" \
             -Pnavic.abi=${{ steps.args.outputs.abis }} \
+            -Pnavic.versionName="${{ steps.args.outputs.version }}" \
             --stacktrace --no-daemon --no-watch-fs
 
       - name: Collect APK
@@ -182,7 +192,7 @@ jobs:
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ inputs.tag != '' && inputs.tag || format('build-{0}', github.run_number) }}
+          tag_name: ${{ inputs.tag != '' && inputs.tag || steps.args.outputs.version }}
           name: ${{ inputs.tag != '' && inputs.tag || format('{0} ({1})', steps.args.outputs.version, inputs.flavor) }}
           prerelease: ${{ inputs.prerelease }}
           generate_release_notes: true
